@@ -1,0 +1,35 @@
+# browser login states
+crawler_py/weibo_storage_state.json
+weibo_storage_state.json
+weibo_browser_profile/
+crawler_py/weibo_browser_profile/
+**/weibo_browser_profile/
+
+# sensitive
+.env
+**/.env
+crawler_py/.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / Vue
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+
+# Java / Maven
+target/
+*.class
+
+# IDE
+.idea/
+.vscode/
+
+# logs
+*.log
+logs/

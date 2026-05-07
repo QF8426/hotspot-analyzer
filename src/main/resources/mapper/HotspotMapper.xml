@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.hotspotanalyzer.mapper.HotspotMapper">
+
+    <select id="findAll" resultType="com.example.hotspotanalyzer.entity.Hotspot">
+        SELECT
+            id,
+            platform,
+            title,
+            rank_num,
+            hot_value,
+            tags,
+            is_ranked,
+            is_special,
+            source_url,
+            crawl_time,
+            created_at
+        FROM hotspot
+        ORDER BY crawl_time DESC, id DESC
+    </select>
+
+    <!-- 改为：只查某平台在 snapshot 中“最新一轮抓取”的真实榜单 -->
+    <select id="findByPlatform" resultType="com.example.hotspotanalyzer.entity.Hotspot">
+        SELECT
+            hs.hotspot_id AS id,
+            hs.platform,
+            hs.title,
+            hs.rank_num,
+            hs.hot_value,
+            hs.tags,
+            hs.is_ranked,
+            hs.is_special,
+            h.source_url,
+            hs.crawl_time,
+            hs.created_at
+        FROM hotspot_snapshot hs
+        LEFT JOIN hotspot h ON hs.hotspot_id = h.id
+        WHERE hs.platform = #{platform}
+          AND hs.crawl_time = (
+              SELECT MAX(crawl_time)
+              FROM hotspot_snapshot
+              WHERE platform = #{platform}
+          )
+        ORDER BY
+            hs.is_special DESC,
+            CASE WHEN hs.rank_num IS NULL THEN 1 ELSE 0 END ASC,
+            hs.rank_num ASC,
+            hs.hot_value DESC,
+            hs.id DESC
+    </select>
+
+    <select id="findById" resultType="com.example.hotspotanalyzer.entity.Hotspot">
+        SELECT
+            h.id,
+            h.platform,
+            h.title,
+            h.rank_num,
+            h.hot_value,
+            h.tags,
+            h.is_ranked,
+            h.is_special,
+            h.source_url,
+            h.crawl_time,
+            h.created_at,
+            s.summary AS aiSummary
+        FROM hotspot h
+        LEFT JOIN hotspot_ai_summary s
+            ON h.id = s.hotspot_id
+        WHERE h.id = #{id}
+    </select>
+
+    <select id="searchByKeyword" resultType="com.example.hotspotanalyzer.entity.Hotspot">
+        SELECT
+            id,
+            platform,
+            title,
+            rank_num,
+            hot_value,
+            tags,
+            is_ranked,
+            is_special,
+            source_url,
+            crawl_time,
+            created_at
+        FROM hotspot
+        WHERE title LIKE CONCAT('%', #{keyword}, '%')
+        ORDER BY crawl_time DESC, id DESC
+    </select>
+
+    <!-- 统计今天出现在趋势表中的不同热点数量 -->
+    <select id="countByPlatform" resultType="com.example.hotspotanalyzer.vo.PlatformStatsVO">
+        SELECT
+            h.platform AS platform,
+            COUNT(DISTINCT ht.hotspot_id) AS count
+        FROM hotspot_trend ht
+        JOIN hotspot h ON ht.hotspot_id = h.id
+        WHERE DATE(ht.record_time) = CURDATE()
+        GROUP BY h.platform
+        ORDER BY count DESC
+    </select>
+
+    <select id="findDailyTopByPlatform" resultType="com.example.hotspotanalyzer.vo.DailyTopHotVO">
+        SELECT
+            h.id,
+            h.platform,
+            h.title,
+            t.max_hot_value AS maxHotValue,
+            h.source_url AS sourceUrl
+        FROM hotspot h
+        JOIN (
+            SELECT
+                ht.hotspot_id,
+                MAX(ht.hot_value) AS max_hot_value
+            FROM hotspot_trend ht
+            JOIN hotspot h2 ON ht.hotspot_id = h2.id
+            WHERE h2.platform = #{platform}
+              AND DATE(ht.record_time) = CURDATE()
+            GROUP BY ht.hotspot_id
+        ) t ON h.id = t.hotspot_id
+        WHERE h.platform = #{platform}
+        ORDER BY t.max_hot_value DESC, h.id DESC
+        LIMIT #{limit}
+    </select>
+
+        <select id="findHistoryByPlatformAndDate" resultType="com.example.hotspotanalyzer.vo.HistoryHotVO">
+        SELECT
+            ds.hotspot_id AS hotspotId,
+            ds.platform AS platform,
+            ds.title AS title,
+            ds.max_hot_value AS maxHotValue,
+            ds.best_rank_num AS bestRankNum,
+            ds.appear_count AS appearCount,
+            ds.duration_minutes AS durationMinutes,
+            ds.is_special AS isSpecial,
+            h.source_url AS sourceUrl
+        FROM hotspot_daily_summary ds
+        LEFT JOIN hotspot h ON ds.hotspot_id = h.id
+        WHERE ds.platform = #{platform}
+          AND ds.summary_date = #{date}
+        ORDER BY
+            ds.is_special ASC,
+            ds.max_hot_value DESC,
+            CASE WHEN ds.best_rank_num IS NULL THEN 999999 ELSE ds.best_rank_num END ASC,
+            ds.hotspot_id DESC
+    </select>
+</mapper>

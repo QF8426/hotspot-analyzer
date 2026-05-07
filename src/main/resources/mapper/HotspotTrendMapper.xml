@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.hotspotanalyzer.mapper.HotspotTrendMapper">
+
+    <select id="findByHotspotId" resultType="com.example.hotspotanalyzer.entity.HotspotTrend">
+        SELECT
+            id,
+            hotspot_id,
+            rank_num,
+            hot_value,
+            record_time,
+            created_at
+        FROM hotspot_trend
+        WHERE hotspot_id = #{hotspotId}
+        ORDER BY record_time ASC
+    </select>
+
+</mapper>
