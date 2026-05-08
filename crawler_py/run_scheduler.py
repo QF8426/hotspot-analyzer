@@ -7,7 +7,7 @@ from bilibili_sync import sync_bilibili_hot_search
 
 from daily_archive import run_daily_archive
 from ai_summary_worker import run_ai_summary_worker
-from material_worker_playwright import run_material_worker
+from weibo_material_worker import run_weibo_material_worker
 from douyin_material_worker import run_douyin_material_worker
 from bilibili_material_worker import run_bilibili_material_worker
 
@@ -19,7 +19,6 @@ AI_WORKER_BATCH_SIZE = 3
 
 MATERIAL_WORKER_INTERVAL_MINUTES = 2
 MATERIAL_WORKER_BATCH_SIZE = 2
-MATERIAL_WORKER_HEADLESS = False
 
 ARCHIVE_HOUR = 0
 ARCHIVE_MINUTE = 15
@@ -120,11 +119,12 @@ def run_hotspot_sync() -> None:
 
 def run_all_material_workers() -> None:
     """
-    处理材料任务。
+    处理三平台材料任务。
 
     微博材料任务：
-    - 由 material_worker_playwright.py 处理
+    - 由 weibo_material_worker.py 处理
     - 处理 status = pending 的微博任务
+    - 使用 requests + Cookie + 微博 H5 接口，不再打开浏览器
 
     抖音材料任务：
     - 由 douyin_material_worker.py 处理
@@ -140,10 +140,7 @@ def run_all_material_workers() -> None:
     """
     print(f"[{now_text()}] 开始处理微博材料任务...")
     try:
-        run_material_worker(
-            limit=MATERIAL_WORKER_BATCH_SIZE,
-            headless=MATERIAL_WORKER_HEADLESS,
-        )
+        run_weibo_material_worker(limit=MATERIAL_WORKER_BATCH_SIZE)
         print(f"[{now_text()}] 微博材料任务处理完成")
     except Exception as e:
         print(f"[{now_text()}] 微博材料任务处理失败：{e}")
@@ -168,6 +165,7 @@ def main() -> None:
     print(f"微博/抖音/B站同步间隔：每 {SYNC_INTERVAL_MINUTES} 分钟一次")
     print(f"材料任务处理间隔：每 {MATERIAL_WORKER_INTERVAL_MINUTES} 分钟一次")
     print(f"材料任务每批处理：每个平台最多 {MATERIAL_WORKER_BATCH_SIZE} 条")
+    print("微博材料 worker：requests 版，不再使用 Playwright 打开浏览器")
     print(f"AI 简介处理间隔：每 {AI_WORKER_INTERVAL_MINUTES} 分钟一次")
     print(f"AI 简介每批处理：最多 {AI_WORKER_BATCH_SIZE} 条")
     print(f"日归档时间：每天 {ARCHIVE_HOUR:02d}:{ARCHIVE_MINUTE:02d}")

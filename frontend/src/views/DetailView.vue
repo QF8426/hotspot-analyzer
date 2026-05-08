@@ -29,7 +29,13 @@
         </template>
 
         <div class="summary-content">
-          {{ displaySummary }}
+          <p
+            v-for="(paragraph, index) in summaryParagraphs"
+            :key="index"
+            class="summary-paragraph"
+          >
+            {{ paragraph }}
+          </p>
         </div>
       </el-card>
 
@@ -107,6 +113,13 @@ const displaySummary = computed(() => {
   }
 
   return genericSummary.value
+})
+
+const summaryParagraphs = computed(() => {
+  return String(displaySummary.value || '')
+    .split(/\n+/)
+    .map(item => item.replace(/^[\s　]+/, '').trim())
+    .filter(Boolean)
 })
 
 const hasTrendData = computed(() => {
@@ -402,9 +415,17 @@ onBeforeUnmount(() => {
 
 .summary-content {
   color: #303133;
-  line-height: 1.9;
   font-size: 15px;
-  white-space: pre-line;
+}
+
+.summary-paragraph {
+  margin: 0;
+  line-height: 1.9;
+  text-indent: 2em;
+}
+
+.summary-paragraph + .summary-paragraph {
+  margin-top: 4px;
 }
 
 .chart {
