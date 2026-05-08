@@ -23,10 +23,62 @@
         <template #header>
           <div class="summary-header">
             <span>热点简介</span>
-            <el-tag v-if="hasAiSummary" type="success" size="small">AI生成</el-tag>
-            <el-tag v-else type="info" size="small">系统提示</el-tag>
+
+            <div class="summary-tags">
+              <el-tag
+                v-if="hasAiSummary && isCrossPlatformSummary"
+                type="warning"
+                size="small"
+              >
+                跨平台分析
+              </el-tag>
+
+              <el-tag
+                v-else-if="hasAiSummary"
+                type="success"
+                size="small"
+              >
+                AI生成
+              </el-tag>
+
+              <el-tag
+                v-else
+                type="info"
+                size="small"
+              >
+                系统提示
+              </el-tag>
+            </div>
           </div>
         </template>
+
+        <div
+          v-if="isCrossPlatformSummary && relatedPlatformList.length"
+          class="cross-platform-info"
+        >
+          <div class="cross-platform-row">
+            <span class="cross-platform-label">关联平台：</span>
+            <el-tag
+              v-for="platform in relatedPlatformList"
+              :key="platform"
+              size="small"
+              type="info"
+              effect="plain"
+            >
+              {{ getPlatformLabel(platform) }}
+            </el-tag>
+          </div>
+
+          <div
+            v-if="relatedHotspotIdList.length"
+            class="cross-platform-row related-id-row"
+          >
+            <span class="cross-platform-label">关联热点ID：</span>
+            <span class="related-id-text">
+              {{ relatedHotspotIdList.join('、') }}
+            </span>
+          </div>
+        </div>
 
         <div class="summary-content">
           <p
@@ -83,19 +135,60 @@ let chartInstance = null
 
 const platformName = computed(() => {
   if (!detail.value || !detail.value.platform) return ''
-  if (detail.value.platform === 'weibo') return '微博'
-  if (detail.value.platform === 'douyin') return '抖音'
-  if (detail.value.platform === 'bilibili') return 'B站'
-  return detail.value.platform
+  return getPlatformLabel(detail.value.platform)
+})
+
+const analysisType = computed(() => {
+  if (!detail.value) return ''
+  const value =
+    detail.value.analysisType ||
+    detail.value.analysis_type ||
+    ''
+
+  return String(value).trim()
+})
+
+const isCrossPlatformSummary = computed(() => {
+  return analysisType.value === 'cross_platform'
+})
+
+const relatedPlatformList = computed(() => {
+  if (!detail.value) return []
+
+  const value =
+    detail.value.relatedPlatforms ||
+    detail.value.related_platforms ||
+    ''
+
+  return String(value)
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+})
+
+const relatedHotspotIdList = computed(() => {
+  if (!detail.value) return []
+
+  const value =
+    detail.value.relatedHotspotIds ||
+    detail.value.related_hotspot_ids ||
+    ''
+
+  return String(value)
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
 })
 
 const hasAiSummary = computed(() => {
   if (!detail.value) return false
+
   const text =
     detail.value.aiSummary ||
     detail.value.summary ||
     detail.value.ai_summary ||
     ''
+
   return String(text).trim().length > 0
 })
 
@@ -174,6 +267,13 @@ function openSource() {
 function cleanTitle(title) {
   if (!title) return ''
   return String(title).replace(/^#|#$/g, '')
+}
+
+function getPlatformLabel(platform) {
+  if (platform === 'weibo') return '微博'
+  if (platform === 'douyin') return '抖音'
+  if (platform === 'bilibili') return 'B站'
+  return platform || '未知平台'
 }
 
 function formatHotValue(value) {
@@ -411,6 +511,47 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.summary-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cross-platform-info {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  color: #606266;
+  font-size: 14px;
+}
+
+.cross-platform-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.7;
+}
+
+.cross-platform-row + .cross-platform-row {
+  margin-top: 6px;
+}
+
+.cross-platform-label {
+  color: #303133;
+  font-weight: 600;
+}
+
+.related-id-row {
+  color: #909399;
+}
+
+.related-id-text {
+  color: #606266;
 }
 
 .summary-content {

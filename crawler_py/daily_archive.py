@@ -1,11 +1,14 @@
-from datetime import datetime
-from typing import Optional
+from datetime import date, datetime
+from typing import Optional, Union
 
 import pymysql
 from pymysql.connections import Connection
 from pymysql.cursors import Cursor
 
 from db_config import DB_CONFIG
+
+
+ArchiveDateType = Optional[Union[str, date, datetime]]
 
 
 def get_connection() -> Connection:
@@ -20,19 +23,49 @@ def get_connection() -> Connection:
     )
 
 
+def normalize_archive_date(archive_date: ArchiveDateType) -> Optional[str]:
+    """
+    统一归档日期格式。
+
+    支持：
+    - None：默认归档昨天
+    - "2026-04-08"
+    - date(2026, 4, 8)
+    - datetime(2026, 4, 8, ...)
+    """
+    if archive_date is None:
+        return None
+
+    if isinstance(archive_date, datetime):
+        return archive_date.date().isoformat()
+
+    if isinstance(archive_date, date):
+        return archive_date.isoformat()
+
+    return str(archive_date)[:10]
+
+
 def archive_normal_hotspots(
     cursor: Cursor,
-    archive_date: Optional[str] = None,
+    archive_date: ArchiveDateType = None,
     interval_minutes: int = 5
 ) -> int:
     """
-    归档普通热点（来自 hotspot_trend）
-    archive_date 格式：YYYY-MM-DD
-    如果不传，则默认归档昨天
+    归档普通热点，数据来源：hotspot_trend。
+
+    注意：
+    SQL 中占位符顺序是：
+    1. COUNT(*) * %s AS duration_minutes  -> interval_minutes
+    2. DATE(ht.record_time) = %s          -> archive_date
+
+    所以 params 必须是：
+    (interval_minutes, archive_date)
     """
-    if archive_date:
+    archive_date_text = normalize_archive_date(archive_date)
+
+    if archive_date_text:
         where_sql = "DATE(ht.record_time) = %s"
-        params = (archive_date, interval_minutes)
+        params = (interval_minutes, archive_date_text)
     else:
         where_sql = "ht.record_time >= CURDATE() - INTERVAL 1 DAY AND ht.record_time < CURDATE()"
         params = (interval_minutes,)
@@ -90,17 +123,25 @@ def archive_normal_hotspots(
 
 def archive_special_hotspots(
     cursor: Cursor,
-    archive_date: Optional[str] = None,
+    archive_date: ArchiveDateType = None,
     interval_minutes: int = 5
 ) -> int:
     """
-    归档特殊项/置顶项（来自 hotspot_snapshot）
-    archive_date 格式：YYYY-MM-DD
-    如果不传，则默认归档昨天
+    归档特殊项/置顶项，数据来源：hotspot_snapshot。
+
+    注意：
+    SQL 中占位符顺序是：
+    1. COUNT(*) * %s AS duration_minutes -> interval_minutes
+    2. DATE(hs.crawl_time) = %s          -> archive_date
+
+    所以 params 必须是：
+    (interval_minutes, archive_date)
     """
-    if archive_date:
+    archive_date_text = normalize_archive_date(archive_date)
+
+    if archive_date_text:
         where_sql = "DATE(hs.crawl_time) = %s"
-        params = (archive_date, interval_minutes)
+        params = (interval_minutes, archive_date_text)
     else:
         where_sql = "hs.crawl_time >= CURDATE() - INTERVAL 1 DAY AND hs.crawl_time < CURDATE()"
         params = (interval_minutes,)
@@ -161,7 +202,7 @@ def cleanup_old_snapshot(
     keep_days: int = 7
 ) -> int:
     """
-    清理超过保留天数的 snapshot 数据
+    清理超过保留天数的 snapshot 数据。
     """
     sql = """
         DELETE FROM hotspot_snapshot
@@ -176,7 +217,7 @@ def cleanup_old_trend(
     keep_days: int = 7
 ) -> int:
     """
-    清理超过保留天数的 trend 数据
+    清理超过保留天数的 trend 数据。
     """
     sql = """
         DELETE FROM hotspot_trend
@@ -187,7 +228,7 @@ def cleanup_old_trend(
 
 
 def run_daily_archive(
-    archive_date: Optional[str] = None,
+    archive_date: ArchiveDateType = None,
     interval_minutes: int = 5,
     keep_days: int = 7,
     do_cleanup: bool = False
@@ -195,15 +236,16 @@ def run_daily_archive(
     """
     主流程：
     1. 归档普通热点
-    2. 归档特殊项
-    3. 可选：清理旧 snapshot / trend
+    2. 归档特殊项/置顶项
+    3. 可选清理旧 snapshot / trend
 
     archive_date:
         - None：默认归档昨天
-        - '2026-04-05'：手动归档指定日期
+        - "2026-04-08"：手动归档指定日期
+        - date(2026, 4, 8)：也支持
 
     interval_minutes:
-        - 你当前抓取频率（分钟）
+        - 当前抓取频率
         - 用于计算 duration_minutes
 
     keep_days:
@@ -211,21 +253,23 @@ def run_daily_archive(
 
     do_cleanup:
         - False：只归档，不清理
-        - True：归档后顺便清理旧数据
+        - True：归档后清理旧 snapshot / trend
     """
+    archive_date_text = normalize_archive_date(archive_date)
+
     conn = get_connection()
 
     try:
         with conn.cursor() as cursor:
             normal_rows = archive_normal_hotspots(
                 cursor,
-                archive_date=archive_date,
+                archive_date=archive_date_text,
                 interval_minutes=interval_minutes
             )
 
             special_rows = archive_special_hotspots(
                 cursor,
-                archive_date=archive_date,
+                archive_date=archive_date_text,
                 interval_minutes=interval_minutes
             )
 
@@ -238,7 +282,7 @@ def run_daily_archive(
 
         conn.commit()
 
-        target_date = archive_date if archive_date else "昨天"
+        target_date = archive_date_text if archive_date_text else "昨天"
         print("日归档完成")
         print(f"归档日期：{target_date}")
         print(f"普通热点归档影响行数：{normal_rows}")
@@ -254,22 +298,15 @@ def run_daily_archive(
         conn.rollback()
         print("日归档失败，已回滚：", e)
         raise
+
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
     run_daily_archive(
-        archive_date="2026-04-05",
+        archive_date="2026-04-08",
         interval_minutes=5,
         keep_days=7,
         do_cleanup=False
     )
-
-    # 你以后如果要手动测试某一天，可以改成：
-    # run_daily_archive(
-    #     archive_date="2026-04-05",
-    #     interval_minutes=5,
-    #     keep_days=7,
-    #     do_cleanup=False
-    # )

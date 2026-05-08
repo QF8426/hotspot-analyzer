@@ -65,7 +65,10 @@
             h.source_url,
             h.crawl_time,
             h.created_at,
-            s.summary AS aiSummary
+            s.summary AS aiSummary,
+            s.analysis_type AS analysisType,
+            s.related_hotspot_ids AS relatedHotspotIds,
+            s.related_platforms AS relatedPlatforms
         FROM hotspot h
         LEFT JOIN hotspot_ai_summary s
             ON h.id = s.hotspot_id
@@ -125,7 +128,7 @@
         LIMIT #{limit}
     </select>
 
-        <select id="findHistoryByPlatformAndDate" resultType="com.example.hotspotanalyzer.vo.HistoryHotVO">
+    <select id="findHistoryByPlatformAndDate" resultType="com.example.hotspotanalyzer.vo.HistoryHotVO">
         SELECT
             ds.hotspot_id AS hotspotId,
             ds.platform AS platform,

@@ -392,7 +392,7 @@ def enqueue_douyin_tasks(
     }
 
 
-def sync_douyin_hot_search() -> None:
+def sync_douyin_hot_search() -> int:
     """
     同步抖音热榜。
 
@@ -401,14 +401,13 @@ def sync_douyin_hot_search() -> None:
     - 写入 hotspot / hotspot_snapshot / hotspot_trend；
     - 对前 10 热点入队 AI 简介任务；
     - 对前 10 热点入队抖音材料任务；
-    - 抖音材料任务暂由后续 douyin_material_worker.py 专门处理；
-    - 不影响微博完整链路。
+    - 抖音材料任务由 douyin_material_worker.py 专门处理。
     """
     data: List[Dict[str, Any]] = fetch_douyin_hot_search(top_n=DOUYIN_TOP_N)
 
     if not data:
         print("没有抓到任何抖音热榜数据，本次结束")
-        return
+        return 0
 
     now = datetime.now()
     conn = get_connection()
@@ -472,6 +471,8 @@ def sync_douyin_hot_search() -> None:
         print(f"抖音 AI 简介任务入队：{ai_task_count} 条")
         print(f"抖音材料任务入队：{material_task_count} 条")
         print(f"抖音材料任务状态：{DOUYIN_MATERIAL_PENDING_STATUS}")
+
+        return inserted_count
 
     except Exception as e:
         conn.rollback()

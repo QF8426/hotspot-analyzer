@@ -317,11 +317,11 @@ def upsert_hotspot_snapshot_and_trend(
     }
 
 
-def sync_weibo_hot_search() -> None:
+def sync_weibo_hot_search() -> int:
     data: List[Dict[str, Any]] = fetch_weibo_hot_search()
     if not data:
         print("没有抓到任何微博热搜数据，本次结束")
-        return
+        return 0
 
     now = datetime.now()
     conn = get_connection()
@@ -377,6 +377,8 @@ def sync_weibo_hot_search() -> None:
         print(f"趋势新增：{trend_count} 条")
         print(f"AI 简介任务入队：{ai_task_count} 条")
         print(f"材料任务入队：{material_task_count} 条")
+
+        return inserted_count
 
     except Exception as e:
         conn.rollback()

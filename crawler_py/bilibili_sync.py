@@ -346,7 +346,7 @@ def upsert_hotspot_snapshot_and_trend(
     }
 
 
-def sync_bilibili_hot_search(limit: int = BILIBILI_TOP_N) -> None:
+def sync_bilibili_hot_search(limit: int = BILIBILI_TOP_N) -> int:
     """
     同步 B站热搜。
 
@@ -363,7 +363,7 @@ def sync_bilibili_hot_search(limit: int = BILIBILI_TOP_N) -> None:
 
     if not data:
         print("没有抓到任何 B站热搜数据，本次结束")
-        return
+        return 0
 
     now = datetime.now()
     conn = get_connection()
@@ -421,6 +421,8 @@ def sync_bilibili_hot_search(limit: int = BILIBILI_TOP_N) -> None:
         print(f"B站材料任务入队：{material_task_count} 条")
         print(f"B站材料任务状态：{BILIBILI_MATERIAL_PENDING_STATUS}")
         print(f"B站 AI 简介任务入队：{ai_task_count} 条")
+
+        return inserted_count
 
     except Exception as e:
         conn.rollback()

@@ -17,11 +17,27 @@ DEFAULT_LOOKBACK_HOURS = 24
 # 每个平台最多保留 1 个最相似热点
 MAX_MATCHES_PER_PLATFORM = 1
 
-# 标题相似度阈值。第一版先保守一点，避免误匹配太多
+# 单个热点详情页触发匹配时使用的标题相似度阈值
 DEFAULT_SIMILARITY_THRESHOLD = 0.46
 
-# 共同字符覆盖率阈值。用于辅助避免两个标题只是短词碰巧相似
+# 单个热点详情页触发匹配时使用的共同字符覆盖率阈值
 DEFAULT_COMMON_CHAR_THRESHOLD = 0.35
+
+# 主动扫描跨平台候选热点组时，阈值要更严格，避免把无关热点误分到一组
+SCAN_SIMILARITY_THRESHOLD = 0.55
+SCAN_COMMON_CHAR_THRESHOLD = 0.42
+
+# 主动扫描时至少需要几个平台同时出现，默认 3 平台才自动入队
+SCAN_MIN_PLATFORM_COUNT = 3
+
+# 主动扫描每轮最多处理几组，避免任务暴涨
+SCAN_MAX_GROUPS = 3
+
+# 主动扫描时最多读取最近热点数量
+SCAN_MAX_CANDIDATES = 800
+
+# 主动扫描发现的跨平台组，AI 任务优先级
+SCAN_AI_TASK_PRIORITY = 80
 
 SUPPORTED_PLATFORMS = ("weibo", "douyin", "bilibili")
 
@@ -53,8 +69,112 @@ ACTIVE_MATERIAL_TASK_STATUSES = {
     "processing_bilibili",
 }
 
+ACTIVE_AI_TASK_STATUSES = {
+    "pending",
+    "processing",
+}
+
 DONE_STATUS = "done"
 FAILED_STATUS = "failed"
+
+
+# =========================
+# 事件一致性校验规则
+# =========================
+
+# 这些词很容易让两个标题看起来相似，但它们太泛，不能单独证明“同一事件”
+WEAK_TOPIC_WORDS = [
+    "世界杯",
+    "转播权",
+    "热搜",
+    "热榜",
+    "热门",
+    "话题",
+    "相关",
+    "最新",
+    "回应",
+    "官方",
+    "平台",
+    "多个平台",
+    "多平台",
+    "2026",
+    "2026年",
+]
+
+# 表示“已经拿到/已经确定”的动作
+CONFIRMED_ACTION_WORDS = [
+    "拿下",
+    "获得",
+    "拿到",
+    "取得",
+    "签约",
+    "签下",
+    "签订",
+    "敲定",
+    "确定",
+    "确认",
+    "官宣",
+    "达成",
+    "成交",
+    "买下",
+    "购买",
+    "中标",
+]
+
+# 表示“没谈成/没确定/拒绝”的动作
+UNRESOLVED_ACTION_WORDS = [
+    "未谈拢",
+    "仍未谈拢",
+    "没谈拢",
+    "尚未谈拢",
+    "未签约",
+    "仍未签约",
+    "尚未签约",
+    "未签",
+    "没签",
+    "谈崩",
+    "拒绝",
+    "拒购",
+    "拒绝购买",
+    "无缘",
+    "未定",
+    "尚未确定",
+    "悬而未决",
+    "陷入僵局",
+    "僵局",
+    "搁置",
+    "流产",
+]
+
+# 一些相对具体的地域、组织、主体锚点。第一版不做复杂 NER，先用词典拦截明显误匹配
+STRONG_ANCHOR_WORDS = [
+    "香港",
+    "澳门",
+    "台湾",
+    "中国香港",
+    "中国澳门",
+    "央视",
+    "中央电视台",
+    "央视频",
+    "国际足联",
+    "fifa",
+    "中国",
+    "印度",
+    "美国",
+    "墨西哥",
+    "加拿大",
+    "美加墨",
+    "多国",
+    "球迷",
+    "英超",
+    "欧冠",
+    "世俱杯",
+]
+
+# 金额、人数、年份等数字锚点。数字不同不一定冲突，但如果动作也冲突，就更要拒绝
+NUMBER_ANCHOR_PATTERN = re.compile(
+    r"\d+(?:\.\d+)?(?:亿|万|万美元|亿元|人民币|元|人|万人|次|届|天|周|月|年)?"
+)
 
 
 def get_connection() -> Connection:
@@ -106,6 +226,204 @@ def normalize_title(title: str) -> str:
     text = re.sub(r"[#【】\[\]（）()《》<>“”\"'‘’：:，,。.!！?？、/\\|_\-—+*=~`·\s]", "", text)
 
     return text.strip()
+
+
+def remove_weak_topic_words(title: str) -> str:
+    """
+    去掉过于泛化的主题词，用来判断两个标题是否只是在共享“大话题”，而不是同一事件。
+    例如：
+    - 世界杯转播权仍未谈拢 -> 仍未谈拢
+    - 香港拿下世界杯转播权 -> 香港拿下
+    """
+    text = normalize_title(title)
+
+    for word in WEAK_TOPIC_WORDS:
+        text = text.replace(word.lower(), "")
+        text = text.replace(word, "")
+
+    return text.strip()
+
+
+def extract_action_flags(title: str) -> Dict[str, bool]:
+    """
+    提取标题里的事件动作方向：
+    - confirmed：已经拿下/已经确定
+    - unresolved：未谈拢/拒绝/未签约/僵局
+    """
+    text = normalize_title(title)
+
+    confirmed = any(word in text for word in CONFIRMED_ACTION_WORDS)
+    unresolved = any(word in text for word in UNRESOLVED_ACTION_WORDS)
+
+    return {
+        "confirmed": confirmed,
+        "unresolved": unresolved,
+    }
+
+
+def has_action_direction_conflict(title_a: str, title_b: str) -> bool:
+    """
+    判断事件动作是否冲突。
+    例如：
+    - 香港拿下世界杯转播权
+    - 世界杯转播权仍未谈拢
+    这两个共享“世界杯转播权”，但动作方向相反，不能合并。
+    """
+    flags_a = extract_action_flags(title_a)
+    flags_b = extract_action_flags(title_b)
+
+    return (
+        (flags_a["confirmed"] and flags_b["unresolved"])
+        or (flags_b["confirmed"] and flags_a["unresolved"])
+    )
+
+
+def extract_strong_anchors(title: str) -> set:
+    """
+    提取相对具体的锚点：
+    - 地域：香港、澳门、印度等
+    - 机构：央视、国际足联等
+    - 数字金额：21亿、1.7亿、2.5-3亿美元等
+    """
+    text = normalize_title(title)
+    anchors = set()
+
+    for word in STRONG_ANCHOR_WORDS:
+        if word.lower() in text or word in text:
+            anchors.add(word)
+
+    for match in NUMBER_ANCHOR_PATTERN.findall(str(title or "")):
+        if match:
+            anchors.add(match)
+
+    return anchors
+
+
+def meaningful_common_score(title_a: str, title_b: str) -> float:
+    """
+    去掉弱主题词后，再计算共同字符覆盖率。
+    如果两个标题去掉“世界杯/转播权”后几乎没有共同内容，就不能轻易合并。
+    """
+    a = remove_weak_topic_words(title_a)
+    b = remove_weak_topic_words(title_b)
+
+    if not a or not b:
+        return 0.0
+
+    set_a = set(a)
+    set_b = set(b)
+
+    if not set_a or not set_b:
+        return 0.0
+
+    return len(set_a & set_b) / max(1, min(len(set_a), len(set_b)))
+
+
+def is_weak_topic_only_match(title_a: str, title_b: str, similarity: float) -> bool:
+    """
+    判断两个标题是不是主要靠弱主题词相似。
+    这种情况要谨慎：
+    - 世界杯转播权仍未谈拢
+    - 香港拿下世界杯转播权
+    """
+    meaningful_score = meaningful_common_score(title_a, title_b)
+    weak_removed_a = remove_weak_topic_words(title_a)
+    weak_removed_b = remove_weak_topic_words(title_b)
+
+    if not weak_removed_a or not weak_removed_b:
+        return True
+
+    # 相似度不算特别高，且弱词之外共同内容很少，基本就是泛主题相似
+    return similarity < 0.78 and meaningful_score < 0.28
+
+
+def has_anchor_scope_conflict(title_a: str, title_b: str) -> bool:
+    """
+    锚点范围冲突的辅助判断。
+    这不是绝对规则，只拦截非常典型的情况：
+    - 一个标题明确是“香港拿下”
+    - 另一个标题是“多国未签/整体未谈拢”
+    """
+    anchors_a = extract_strong_anchors(title_a)
+    anchors_b = extract_strong_anchors(title_b)
+
+    text_a = normalize_title(title_a)
+    text_b = normalize_title(title_b)
+
+    # 香港/澳门/台湾等明确地区获得，与另一个标题的“多国未签/整体未谈拢”容易不是同一事件
+    region_words = {"香港", "澳门", "台湾", "中国香港", "中国澳门"}
+    broad_words = {"多国"}
+
+    a_region = bool(anchors_a & region_words)
+    b_region = bool(anchors_b & region_words)
+    a_broad = bool(anchors_a & broad_words)
+    b_broad = bool(anchors_b & broad_words)
+
+    if a_region and b_broad and has_action_direction_conflict(title_a, title_b):
+        return True
+
+    if b_region and a_broad and has_action_direction_conflict(title_a, title_b):
+        return True
+
+    # 一个标题明确“香港拿下/获得”，另一个完全没有香港且是未谈拢方向，也拒绝
+    if "香港" in text_a and "香港" not in text_b and has_action_direction_conflict(title_a, title_b):
+        return True
+
+    if "香港" in text_b and "香港" not in text_a and has_action_direction_conflict(title_a, title_b):
+        return True
+
+    return False
+
+
+def is_event_consistent(
+    title_a: str,
+    title_b: str,
+    similarity: float,
+    common_score: float,
+) -> Tuple[bool, str]:
+    """
+    事件一致性校验。
+
+    字符串相似度负责“召回候选”，这个函数负责“拦截明显不是同一事件”的情况。
+
+    当前重点拦截：
+    1. 动作方向冲突：拿下/获得 vs 未谈拢/拒绝/未签约；
+    2. 只靠弱主题词相似：都包含“世界杯转播权”，但弱词之外几乎没共同内容；
+    3. 锚点范围冲突：香港拿下 vs 多国未签/整体未谈拢。
+    """
+    normalized_a = normalize_title(title_a)
+    normalized_b = normalize_title(title_b)
+
+    if not normalized_a or not normalized_b:
+        return False, "empty_title"
+
+    if has_action_direction_conflict(title_a, title_b):
+        return False, "action_direction_conflict"
+
+    if has_anchor_scope_conflict(title_a, title_b):
+        return False, "anchor_scope_conflict"
+
+    if is_weak_topic_only_match(title_a, title_b, similarity):
+        return False, "weak_topic_only_match"
+
+    # 如果两个标题都有强锚点，但强锚点完全不交集，同时相似度不是极高，也谨慎拒绝
+    anchors_a = extract_strong_anchors(title_a)
+    anchors_b = extract_strong_anchors(title_b)
+
+    if anchors_a and anchors_b:
+        shared_anchors = anchors_a & anchors_b
+
+        # 如果都只有“世界杯/转播权”这类弱词，前面已经处理；
+        # 这里主要处理明确锚点完全不同的情况。
+        if not shared_anchors and similarity < 0.82:
+            flags_a = extract_action_flags(title_a)
+            flags_b = extract_action_flags(title_b)
+
+            # 两边动作方向不同或其中一边没有明确动作时，拒绝
+            if flags_a != flags_b or not (flags_a["confirmed"] or flags_a["unresolved"]):
+                return False, "strong_anchor_mismatch"
+
+    return True, "ok"
 
 
 def char_set(text: str) -> set:
@@ -175,13 +493,24 @@ def is_possible_same_hotspot(
     # 短标题要求更严格，防止误匹配。
     min_len = min(len(normalized_a), len(normalized_b))
     if min_len <= 6:
-        return similarity >= 0.62 and common_score >= 0.50, similarity, common_score
+        matched = similarity >= 0.62 and common_score >= 0.50
+    else:
+        matched = similarity >= similarity_threshold and common_score >= common_char_threshold
 
-    return (
-        similarity >= similarity_threshold and common_score >= common_char_threshold,
-        similarity,
-        common_score,
+    if not matched:
+        return False, similarity, common_score
+
+    consistent, reason = is_event_consistent(
+        title_a=title_a,
+        title_b=title_b,
+        similarity=similarity,
+        common_score=common_score,
     )
+
+    if not consistent:
+        return False, similarity, common_score
+
+    return True, similarity, common_score
 
 
 def fetch_hotspot_by_id(cursor: Cursor, hotspot_id: int) -> Optional[Dict[str, Any]]:
@@ -659,6 +988,515 @@ def analyze_cross_platform_status(
         conn.close()
 
 
+# =========================
+# 主动扫描跨平台候选热点组
+# =========================
+
+def fetch_recent_hotspots_for_scan(
+    cursor: Cursor,
+    lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
+    max_candidates: int = SCAN_MAX_CANDIDATES,
+) -> List[Dict[str, Any]]:
+    """
+    主动扫描使用：读取最近一段时间内三平台热点。
+    """
+    start_time = datetime.now() - timedelta(hours=lookback_hours)
+
+    sql = """
+        SELECT id, platform, title, rank_num, hot_value, tags, is_special, source_url, crawl_time
+        FROM hotspot
+        WHERE platform IN ('weibo', 'douyin', 'bilibili')
+          AND crawl_time >= %s
+          AND title IS NOT NULL
+          AND title <> ''
+        ORDER BY
+            CASE WHEN rank_num IS NULL THEN 999999 ELSE rank_num END ASC,
+            hot_value DESC,
+            crawl_time DESC,
+            id DESC
+        LIMIT %s
+    """
+    cursor.execute(sql, (start_time, max_candidates))
+    return list(cursor.fetchall())
+
+
+def hotspot_rank_score(hotspot: Dict[str, Any]) -> float:
+    """
+    用于主动扫描排序：
+    - 排名越靠前越高；
+    - 置顶热点略加权；
+    - 热度只做轻量辅助，避免不同平台热度值无法直接比较的问题。
+    """
+    rank_num = hotspot.get("rank_num")
+    hot_value = float(hotspot.get("hot_value") or 0)
+
+    if rank_num is None:
+        rank_score = 0.0
+    else:
+        rank_score = max(0.0, 60.0 - float(rank_num))
+
+    special_score = 15.0 if hotspot.get("is_special") else 0.0
+    hot_score = min(hot_value / 1000000.0, 20.0)
+
+    return rank_score + special_score + hot_score
+
+
+def build_candidate_group_from_seed(
+    seed: Dict[str, Any],
+    candidates: List[Dict[str, Any]],
+    similarity_threshold: float = SCAN_SIMILARITY_THRESHOLD,
+    common_char_threshold: float = SCAN_COMMON_CHAR_THRESHOLD,
+) -> Optional[Dict[str, Any]]:
+    """
+    以某个热点为种子，尝试在其它平台中找同事件热点。
+    每个平台只保留相似度最高的一条。
+    """
+    seed_platform = seed.get("platform")
+    seed_title = seed.get("title") or ""
+
+    if not seed_platform or not seed_title:
+        return None
+
+    best_by_platform: Dict[str, Dict[str, Any]] = {
+        seed_platform: dict(seed)
+    }
+
+    for candidate in candidates:
+        candidate_id = candidate.get("id")
+        if candidate_id == seed.get("id"):
+            continue
+
+        candidate_platform = candidate.get("platform")
+        candidate_title = candidate.get("title") or ""
+
+        if not candidate_platform or candidate_platform == seed_platform:
+            continue
+
+        matched, similarity, common_score = is_possible_same_hotspot(
+            seed_title,
+            candidate_title,
+            similarity_threshold=similarity_threshold,
+            common_char_threshold=common_char_threshold,
+        )
+
+        if not matched:
+            continue
+
+        item = dict(candidate)
+        item["similarity_score"] = similarity
+        item["common_char_score"] = round(common_score, 4)
+        item["seed_hotspot_id"] = seed.get("id")
+        item["seed_title"] = seed_title
+
+        old = best_by_platform.get(candidate_platform)
+        if old is None:
+            best_by_platform[candidate_platform] = item
+            continue
+
+        old_score = float(old.get("similarity_score") or 0)
+        new_score = float(item.get("similarity_score") or 0)
+
+        old_rank_score = hotspot_rank_score(old)
+        new_rank_score = hotspot_rank_score(item)
+
+        if new_score > old_score or (new_score == old_score and new_rank_score > old_rank_score):
+            best_by_platform[candidate_platform] = item
+
+    group_hotspots = list(best_by_platform.values())
+    platform_count = len({item.get("platform") for item in group_hotspots if item.get("platform")})
+
+    if platform_count <= 1:
+        return None
+
+    # 组内再做一次两两一致性检查。只要任意两条明显冲突，就整组放弃。
+    for index_a in range(len(group_hotspots)):
+        for index_b in range(index_a + 1, len(group_hotspots)):
+            title_a = group_hotspots[index_a].get("title") or ""
+            title_b = group_hotspots[index_b].get("title") or ""
+            similarity = calc_title_similarity(title_a, title_b)
+            common_score = common_char_score(title_a, title_b)
+            consistent, reason = is_event_consistent(title_a, title_b, similarity, common_score)
+            if not consistent:
+                return None
+
+    group_hotspots = sorted(
+        group_hotspots,
+        key=lambda item: (
+            item.get("platform") or "",
+            item.get("rank_num") if item.get("rank_num") is not None else 999999,
+            item.get("id") or 0,
+        ),
+    )
+
+    hotspot_ids = [int(item.get("id")) for item in group_hotspots if item.get("id")]
+    group_key = ",".join(str(item_id) for item_id in sorted(hotspot_ids))
+
+    non_seed_scores = [
+        float(item.get("similarity_score") or 0)
+        for item in group_hotspots
+        if item.get("id") != seed.get("id")
+    ]
+
+    avg_similarity = 1.0
+    if non_seed_scores:
+        avg_similarity = sum(non_seed_scores) / len(non_seed_scores)
+
+    best_rank = min([
+        item.get("rank_num") if item.get("rank_num") is not None else 999999
+        for item in group_hotspots
+    ])
+
+    group_score = (
+        platform_count * 1000
+        + avg_similarity * 100
+        + sum(hotspot_rank_score(item) for item in group_hotspots)
+        - best_rank * 0.1
+    )
+
+    current = dict(seed)
+    matches = []
+    for item in group_hotspots:
+        if item.get("id") == seed.get("id"):
+            continue
+
+        if "similarity_score" not in item:
+            matched, similarity, common_score = is_possible_same_hotspot(
+                seed_title,
+                item.get("title") or "",
+                similarity_threshold=similarity_threshold,
+                common_char_threshold=common_char_threshold,
+            )
+            item = dict(item)
+            item["similarity_score"] = similarity
+            item["common_char_score"] = round(common_score, 4)
+
+        matches.append(item)
+
+    return {
+        "group_key": group_key,
+        "seed": current,
+        "current": current,
+        "matches": matches,
+        "all_hotspots": group_hotspots,
+        "platform_count": platform_count,
+        "avg_similarity": round(avg_similarity, 4),
+        "best_rank": best_rank,
+        "group_score": round(group_score, 4),
+    }
+
+
+def dedupe_and_rank_candidate_groups(
+    raw_groups: List[Dict[str, Any]],
+    min_platform_count: int = SCAN_MIN_PLATFORM_COUNT,
+    max_groups: int = SCAN_MAX_GROUPS,
+) -> List[Dict[str, Any]]:
+    """
+    对扫描出来的候选组去重、排序、限制数量。
+    """
+    unique_groups: Dict[str, Dict[str, Any]] = {}
+
+    for group in raw_groups:
+        if not group:
+            continue
+
+        platform_count = int(group.get("platform_count") or 0)
+        if platform_count < min_platform_count:
+            continue
+
+        group_key = group.get("group_key")
+        if not group_key:
+            continue
+
+        old = unique_groups.get(group_key)
+        if old is None or float(group.get("group_score") or 0) > float(old.get("group_score") or 0):
+            unique_groups[group_key] = group
+
+    groups = list(unique_groups.values())
+    groups.sort(
+        key=lambda item: (
+            -int(item.get("platform_count") or 0),
+            -float(item.get("avg_similarity") or 0),
+            -float(item.get("group_score") or 0),
+            item.get("best_rank") if item.get("best_rank") is not None else 999999,
+        )
+    )
+
+    selected = []
+    used_hotspot_ids = set()
+
+    for group in groups:
+        group_ids = {
+            int(item.get("id"))
+            for item in group.get("all_hotspots") or []
+            if item.get("id")
+        }
+
+        # 避免同一热点在一轮扫描中进入多个组
+        if group_ids & used_hotspot_ids:
+            continue
+
+        selected.append(group)
+        used_hotspot_ids.update(group_ids)
+
+        if len(selected) >= max_groups:
+            break
+
+    return selected
+
+
+def has_existing_cross_platform_summary(cursor: Cursor, hotspot_ids: List[int]) -> bool:
+    """
+    如果同组中已经有跨平台简介，则本轮主动扫描不重复处理。
+    """
+    if not hotspot_ids:
+        return False
+
+    placeholders = ",".join(["%s"] * len(hotspot_ids))
+    sql = f"""
+        SELECT COUNT(*) AS count
+        FROM hotspot_ai_summary
+        WHERE hotspot_id IN ({placeholders})
+          AND analysis_type = 'cross_platform'
+    """
+    cursor.execute(sql, hotspot_ids)
+    row = cursor.fetchone() or {}
+    return int(row.get("count") or 0) > 0
+
+
+def fetch_ai_task(cursor: Cursor, hotspot_id: int) -> Optional[Dict[str, Any]]:
+    sql = """
+        SELECT id, hotspot_id, platform, title, status, priority, error_message, created_at, updated_at
+        FROM hotspot_ai_summary_task
+        WHERE hotspot_id = %s
+        LIMIT 1
+    """
+    cursor.execute(sql, (hotspot_id,))
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def upsert_ai_summary_task_if_needed(
+    cursor: Cursor,
+    hotspot: Dict[str, Any],
+    priority: int = SCAN_AI_TASK_PRIORITY,
+    force_reset_done: bool = True,
+) -> str:
+    """
+    主动扫描发现跨平台组后，为组内热点创建或重置 AI 简介任务。
+
+    返回：
+    - active：已有 pending / processing
+    - done_keep：已有 done 且不重置
+    - enqueued：本次新建或重置为 pending
+    """
+    hotspot_id = int(hotspot.get("id"))
+    platform = hotspot.get("platform")
+    title = hotspot.get("title") or ""
+
+    task = fetch_ai_task(cursor, hotspot_id)
+    if task:
+        status = task.get("status")
+        if status in ACTIVE_AI_TASK_STATUSES:
+            return "active"
+
+        if status == DONE_STATUS and not force_reset_done:
+            return "done_keep"
+
+    sql = """
+        INSERT INTO hotspot_ai_summary_task (
+            hotspot_id,
+            platform,
+            title,
+            status,
+            priority,
+            error_message,
+            created_at,
+            updated_at
+        ) VALUES (%s, %s, %s, 'pending', %s, NULL, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+            platform = VALUES(platform),
+            title = VALUES(title),
+            status = CASE
+                WHEN status = 'processing' THEN status
+                ELSE VALUES(status)
+            END,
+            priority = GREATEST(priority, VALUES(priority)),
+            error_message = NULL,
+            updated_at = NOW()
+    """
+    cursor.execute(sql, (hotspot_id, platform, title, priority))
+    return "enqueued"
+
+
+def build_related_result_from_group(group: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    将主动扫描得到的 group 转换成 ensure_related_material_tasks / build_cross_platform_material_bundle 可复用的结构。
+    """
+    all_hotspots = group.get("all_hotspots") or []
+    current = group.get("current") or (all_hotspots[0] if all_hotspots else {})
+    current_id = current.get("id")
+
+    matches = []
+    for item in all_hotspots:
+        if item.get("id") == current_id:
+            continue
+        matches.append(item)
+
+    return {
+        "current": current,
+        "matches": matches,
+        "all_hotspots": all_hotspots,
+        "platform_count": len({item.get("platform") for item in all_hotspots if item.get("platform")}),
+        "lookback_hours": DEFAULT_LOOKBACK_HOURS,
+        "similarity_threshold": SCAN_SIMILARITY_THRESHOLD,
+    }
+
+
+def enqueue_group_material_and_ai_tasks(
+    cursor: Cursor,
+    group: Dict[str, Any],
+    ai_priority: int = SCAN_AI_TASK_PRIORITY,
+) -> Dict[str, Any]:
+    """
+    给主动扫描出来的热点组补材料任务和 AI 任务。
+    """
+    related_result = build_related_result_from_group(group)
+
+    material_check = ensure_related_material_tasks(
+        cursor=cursor,
+        related_result=related_result,
+        force_reset_failed=True,
+    )
+
+    ai_actions = []
+    for hotspot in related_result.get("all_hotspots") or []:
+        action = upsert_ai_summary_task_if_needed(
+            cursor=cursor,
+            hotspot=hotspot,
+            priority=ai_priority,
+            force_reset_done=True,
+        )
+        ai_actions.append({
+            "hotspot_id": hotspot.get("id"),
+            "platform": hotspot.get("platform"),
+            "title": hotspot.get("title"),
+            "action": action,
+        })
+
+    material_bundle = build_cross_platform_material_bundle(cursor, related_result)
+
+    return {
+        "related_result": related_result,
+        "material_check": material_check,
+        "material_bundle": material_bundle,
+        "ai_actions": ai_actions,
+    }
+
+
+def scan_cross_platform_candidate_groups(
+    lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
+    max_groups: int = SCAN_MAX_GROUPS,
+    min_platform_count: int = SCAN_MIN_PLATFORM_COUNT,
+    similarity_threshold: float = SCAN_SIMILARITY_THRESHOLD,
+    common_char_threshold: float = SCAN_COMMON_CHAR_THRESHOLD,
+    max_candidates: int = SCAN_MAX_CANDIDATES,
+    auto_enqueue_tasks: bool = True,
+    skip_existing_cross_summary: bool = True,
+) -> Dict[str, Any]:
+    """
+    主动扫描跨平台候选热点组。
+
+    作用：
+    - 找出最近一段时间内同时出现在多个平台的相似热点；
+    - 即使这些热点不在单个平台前 10，也可以认为有跨平台传播价值；
+    - 自动补材料任务和 AI 简介任务。
+
+    返回：
+    {
+        "groups": [...],
+        "processed_groups": [...],
+        "raw_group_count": n,
+        "selected_group_count": n
+    }
+    """
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cursor:
+            candidates = fetch_recent_hotspots_for_scan(
+                cursor=cursor,
+                lookback_hours=lookback_hours,
+                max_candidates=max_candidates,
+            )
+
+            raw_groups = []
+            for seed in candidates:
+                group = build_candidate_group_from_seed(
+                    seed=seed,
+                    candidates=candidates,
+                    similarity_threshold=similarity_threshold,
+                    common_char_threshold=common_char_threshold,
+                )
+                if group:
+                    raw_groups.append(group)
+
+            selected_groups = dedupe_and_rank_candidate_groups(
+                raw_groups=raw_groups,
+                min_platform_count=min_platform_count,
+                max_groups=max_groups,
+            )
+
+            processed_groups = []
+            skipped_groups = []
+
+            for group in selected_groups:
+                hotspot_ids = [
+                    int(item.get("id"))
+                    for item in group.get("all_hotspots") or []
+                    if item.get("id")
+                ]
+
+                if skip_existing_cross_summary and has_existing_cross_platform_summary(cursor, hotspot_ids):
+                    skipped_groups.append({
+                        "group": group,
+                        "reason": "existing_cross_platform_summary",
+                    })
+                    continue
+
+                process_result = {
+                    "group": group,
+                    "task_result": None,
+                }
+
+                if auto_enqueue_tasks:
+                    task_result = enqueue_group_material_and_ai_tasks(cursor, group)
+                    process_result["task_result"] = task_result
+
+                processed_groups.append(process_result)
+
+            if auto_enqueue_tasks:
+                conn.commit()
+
+            return {
+                "lookback_hours": lookback_hours,
+                "max_groups": max_groups,
+                "min_platform_count": min_platform_count,
+                "similarity_threshold": similarity_threshold,
+                "common_char_threshold": common_char_threshold,
+                "candidate_count": len(candidates),
+                "raw_group_count": len(raw_groups),
+                "selected_group_count": len(selected_groups),
+                "processed_group_count": len(processed_groups),
+                "skipped_group_count": len(skipped_groups),
+                "groups": selected_groups,
+                "processed_groups": processed_groups,
+                "skipped_groups": skipped_groups,
+            }
+
+    finally:
+        conn.close()
+
+
 def print_match_result(result: Dict[str, Any]) -> None:
     current = result.get("current") or {}
     matches = result.get("matches") or []
@@ -716,17 +1554,101 @@ def print_match_result(result: Dict[str, Any]) -> None:
     print("=" * 70)
 
 
+def print_scan_result(result: Dict[str, Any]) -> None:
+    print("=" * 80)
+    print("跨平台候选热点主动扫描结果")
+    print("=" * 80)
+
+    print(f"扫描时间窗口：最近 {result.get('lookback_hours')} 小时")
+    print(f"候选热点数量：{result.get('candidate_count')}")
+    print(f"原始候选组数量：{result.get('raw_group_count')}")
+    print(f"筛选后候选组数量：{result.get('selected_group_count')}")
+    print(f"已处理候选组数量：{result.get('processed_group_count')}")
+    print(f"跳过候选组数量：{result.get('skipped_group_count')}")
+    print("-" * 80)
+
+    processed_groups = result.get("processed_groups") or []
+    if not processed_groups:
+        print("本轮没有新的跨平台候选组需要处理。")
+        print("=" * 80)
+        return
+
+    for group_index, item in enumerate(processed_groups, start=1):
+        group = item.get("group") or {}
+        task_result = item.get("task_result") or {}
+        material_check = task_result.get("material_check") or {}
+        material_bundle = task_result.get("material_bundle") or {}
+
+        print(f"候选组 #{group_index}")
+        print(
+            f"group_key={group.get('group_key')}，"
+            f"平台数={group.get('platform_count')}，"
+            f"平均相似度={group.get('avg_similarity')}，"
+            f"综合分={group.get('group_score')}"
+        )
+
+        print("组内热点：")
+        for hotspot in group.get("all_hotspots") or []:
+            print(
+                f"- hotspot_id={hotspot.get('id')}，"
+                f"平台={platform_label(hotspot.get('platform'))}，"
+                f"排名={hotspot.get('rank_num')}，"
+                f"标题={hotspot.get('title')}"
+            )
+
+        print(f"分析模式：{material_check.get('analysis_mode')}")
+        print(f"已有材料平台：{', '.join(platform_label(p) for p in material_check.get('ready_platforms') or [])}")
+        print(
+            f"可用于 AI 的材料平台数：{material_bundle.get('platform_count')}，"
+            f"平台项数量：{len(material_bundle.get('platform_items') or [])}"
+        )
+
+        print("材料任务动作：")
+        for action in material_check.get("actions") or []:
+            print(
+                f"- hotspot_id={action.get('hotspot_id')}，"
+                f"平台={platform_label(action.get('platform'))}，"
+                f"action={action.get('action')}，"
+                f"task_status={action.get('task_status')}"
+            )
+
+        print("AI任务动作：")
+        for action in task_result.get("ai_actions") or []:
+            print(
+                f"- hotspot_id={action.get('hotspot_id')}，"
+                f"平台={platform_label(action.get('platform'))}，"
+                f"action={action.get('action')}"
+            )
+
+        print("-" * 80)
+
+    print("=" * 80)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) >= 2:
-        target_hotspot_id = int(sys.argv[1])
+    if len(sys.argv) >= 2 and sys.argv[1] in ("--scan", "scan"):
+        scan_result = scan_cross_platform_candidate_groups(
+            lookback_hours=DEFAULT_LOOKBACK_HOURS,
+            max_groups=SCAN_MAX_GROUPS,
+            min_platform_count=SCAN_MIN_PLATFORM_COUNT,
+            similarity_threshold=SCAN_SIMILARITY_THRESHOLD,
+            common_char_threshold=SCAN_COMMON_CHAR_THRESHOLD,
+            max_candidates=SCAN_MAX_CANDIDATES,
+            auto_enqueue_tasks=True,
+            skip_existing_cross_summary=True,
+        )
+        print_scan_result(scan_result)
     else:
-        target_hotspot_id = int(input("请输入要分析的 hotspot_id：").strip())
+        if len(sys.argv) >= 2:
+            target_hotspot_id = int(sys.argv[1])
+        else:
+            target_hotspot_id = int(input("请输入要分析的 hotspot_id：").strip())
 
-    result_data = analyze_cross_platform_status(
-        hotspot_id=target_hotspot_id,
-        lookback_hours=DEFAULT_LOOKBACK_HOURS,
-        similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
-        auto_enqueue_missing_materials=True,
-    )
+        result_data = analyze_cross_platform_status(
+            hotspot_id=target_hotspot_id,
+            lookback_hours=DEFAULT_LOOKBACK_HOURS,
+            similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
+            auto_enqueue_missing_materials=True,
+        )
 
-    print_match_result(result_data)
+        print_match_result(result_data)

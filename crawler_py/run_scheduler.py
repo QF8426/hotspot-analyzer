@@ -10,6 +10,7 @@ from ai_summary_worker import run_ai_summary_worker
 from weibo_material_worker import run_weibo_material_worker
 from douyin_material_worker import run_douyin_material_worker
 from bilibili_material_worker import run_bilibili_material_worker
+from cross_platform_matcher import scan_cross_platform_candidate_groups
 
 
 SYNC_INTERVAL_MINUTES = 5
@@ -74,47 +75,76 @@ def should_run_archive(now: datetime, last_archive_date: str | None) -> tuple[bo
     return True, today_key
 
 
-def run_hotspot_sync() -> None:
+def run_cross_platform_scan() -> None:
+    """
+    主动扫描跨平台候选热点组。
+
+    触发条件：
+    - 本轮三平台同步后，至少出现 1 条新热点；
+    - 不做 30 分钟兜底扫描，避免额外任务膨胀。
+    """
+    print(f"[{now_text()}] 检测到新热点，开始扫描跨平台候选热点组...")
+
+    try:
+        result = scan_cross_platform_candidate_groups()
+
+        print(
+            f"[{now_text()}] 跨平台候选扫描完成："
+            f"候选热点 {result.get('candidate_count')} 条，"
+            f"原始候选组 {result.get('raw_group_count')} 组，"
+            f"筛选后 {result.get('selected_group_count')} 组，"
+            f"本轮处理 {result.get('processed_group_count')} 组，"
+            f"跳过 {result.get('skipped_group_count')} 组"
+        )
+    except Exception as e:
+        print(f"[{now_text()}] 跨平台候选扫描失败：{e}")
+
+
+def run_hotspot_sync() -> int:
     """
     同步平台热榜。
 
-    微博：
-    - 热点/快照/趋势
-    - 材料任务
-    - AI 简介任务
+    返回：
+    - 本轮三平台新增热点总数。
 
-    抖音：
-    - 热点/快照/趋势
-    - 前 10 入队抖音材料任务
-    - 前 10 入队 AI 简介任务
-
-    B站：
-    - 热搜词条
-    - 热点/快照/趋势
-    - 前 10 入队 B站材料任务
-    - 前 10 入队 AI 简介任务
-    - AI worker 会等待材料任务完成后再生成简介
+    规则：
+    - 三个平台同步全部结束后，再根据新增热点数决定是否扫描跨平台候选组；
+    - 不在某个平台刚同步完时立即扫描，避免其它平台数据还没更新导致漏匹配。
     """
+    total_new_count = 0
+
     print(f"[{now_text()}] 开始执行微博同步...")
     try:
-        sync_weibo_hot_search()
-        print(f"[{now_text()}] 微博同步完成")
+        weibo_new_count = sync_weibo_hot_search() or 0
+        total_new_count += int(weibo_new_count)
+        print(f"[{now_text()}] 微博同步完成，本轮新增 {weibo_new_count} 条")
     except Exception as e:
         print(f"[{now_text()}] 微博同步失败：{e}")
 
     print(f"[{now_text()}] 开始执行抖音同步...")
     try:
-        sync_douyin_hot_search()
-        print(f"[{now_text()}] 抖音同步完成")
+        douyin_new_count = sync_douyin_hot_search() or 0
+        total_new_count += int(douyin_new_count)
+        print(f"[{now_text()}] 抖音同步完成，本轮新增 {douyin_new_count} 条")
     except Exception as e:
         print(f"[{now_text()}] 抖音同步失败：{e}")
 
     print(f"[{now_text()}] 开始执行 B站同步...")
     try:
-        sync_bilibili_hot_search()
-        print(f"[{now_text()}] B站同步完成")
+        bilibili_new_count = sync_bilibili_hot_search() or 0
+        total_new_count += int(bilibili_new_count)
+        print(f"[{now_text()}] B站同步完成，本轮新增 {bilibili_new_count} 条")
     except Exception as e:
         print(f"[{now_text()}] B站同步失败：{e}")
+
+    print(f"[{now_text()}] 三平台同步结束，本轮新增热点总数：{total_new_count}")
+
+    if total_new_count > 0:
+        run_cross_platform_scan()
+    else:
+        print(f"[{now_text()}] 本轮没有新增热点，跳过跨平台候选扫描")
+
+    return total_new_count
 
 
 def run_all_material_workers() -> None:
@@ -163,6 +193,7 @@ def run_all_material_workers() -> None:
 def main() -> None:
     print("调度器启动")
     print(f"微博/抖音/B站同步间隔：每 {SYNC_INTERVAL_MINUTES} 分钟一次")
+    print("跨平台候选扫描：三平台同步后，如果本轮出现新热点则触发")
     print(f"材料任务处理间隔：每 {MATERIAL_WORKER_INTERVAL_MINUTES} 分钟一次")
     print(f"材料任务每批处理：每个平台最多 {MATERIAL_WORKER_BATCH_SIZE} 条")
     print("微博材料 worker：requests 版，不再使用 Playwright 打开浏览器")
