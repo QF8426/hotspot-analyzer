@@ -322,7 +322,7 @@ async function loadDaily() {
     })
 
     if (isSelectedToday.value) {
-      dailyHotspots.value = await getDailyTop(platform.value, 200)
+      dailyHotspots.value = await getDailyTop(platform.value)
       historyHotspots.value = []
     } else {
       historyHotspots.value = await getHistoryHotspots(platform.value, selectedDate.value)

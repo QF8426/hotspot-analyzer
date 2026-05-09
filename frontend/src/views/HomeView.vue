@@ -1,116 +1,262 @@
 <template>
-  <div class="home-page">
-    <div class="header">
-      <h1>热点聚合分析器</h1>
-      <p>跨平台热点数据展示与分析</p>
-
-      <div class="search-box">
-        <el-input
-          v-model="keyword"
-          placeholder="请输入热点关键词，例如：广州"
-          size="large"
-          clearable
-          @keyup.enter="handleSearch"
-        >
-          <template #append>
-            <el-button type="primary" @click="handleSearch">搜索</el-button>
-          </template>
-        </el-input>
+  <div class="home-shell">
+    <!-- 顶部导航：简化为首页 / 跨平台热点 / 历史榜单，避免与平台入口、详情页重复 -->
+    <header class="top-bar">
+      <div class="brand" @click="goHome">
+        <div class="brand-logo">
+          <span>↗</span>
+        </div>
+        <div>
+          <div class="brand-title">跨平台热点聚合分析器</div>
+          <div class="brand-subtitle">Weibo · Douyin · Bilibili Intelligence</div>
+        </div>
       </div>
-    </div>
 
-    <!-- 平台统计卡片：以后新增平台，只改 platformConfigs -->
-    <el-row :gutter="20" class="stat-row">
-      <el-col
-        v-for="platform in platforms"
-        :key="platform.key"
-        :xs="24"
-        :sm="12"
-        :md="8"
-      >
-        <el-card shadow="hover">
-          <div class="stat-card">
-            <div class="stat-title">{{ platform.name }}今日热点总数</div>
-            <div class="stat-value">{{ platform.count }}</div>
-            <div class="stat-tip">统计今天进入榜单的不同热点数</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+      <nav class="nav-tabs">
+        <button class="nav-tab active" @click="goHome">
+          <span class="nav-icon">⌂</span>
+          首页
+        </button>
+        <button class="nav-tab" @click="goCrossPlatform">
+          <span class="nav-icon">▥</span>
+          跨平台热点
+        </button>
+        <button class="nav-tab" @click="goHistory">
+          <span class="nav-icon">◷</span>
+          历史榜单
+        </button>
+      </nav>
 
-    <!-- 平台 Top 榜：微博 / 抖音 / B站 自动循环展示 -->
-    <el-row :gutter="20" class="platform-row">
-      <el-col
-        v-for="platform in platforms"
-        :key="platform.key"
-        :xs="24"
-        :md="12"
-        :lg="8"
-      >
-        <el-card shadow="hover" class="platform-card">
-          <template #header>
-            <div class="card-header">
-              <div>
-                <span>{{ platform.name }}今日 Top10</span>
-                <div class="platform-desc">{{ platform.desc }}</div>
-              </div>
+      <div class="sync-status">
+        <span class="status-dot"></span>
+        <span>{{ lastSyncText }} · 三平台运行中</span>
+        <span class="status-bars">▮▮▮</span>
+      </div>
+    </header>
 
-              <el-button
-                type="primary"
-                link
-                @click="goPlatform(platform.key, 'daily')"
-              >
-                查看今日全部热点
-              </el-button>
-            </div>
-          </template>
+    <main class="home-page">
+      <!-- Hero 区 -->
+      <section class="hero-section">
+        <div class="hero-bg hero-bg-left"></div>
+        <div class="hero-bg hero-bg-right"></div>
 
-          <div v-loading="platform.loading">
-            <!-- 目前只有微博需要展示置顶热点，后续平台有置顶也可以打开 showPinned -->
-            <div
-              v-if="platform.showPinned && platform.pinned"
-              class="pinned-block"
-              @click="goDetail(platform.pinned.id)"
+        <div class="hero-content">
+          <h1>跨平台热点<span>观察台</span></h1>
+          <p>
+            聚合微博、抖音、B站热点数据，智能生成 AI 简介与跨平台分析，洞察全网热点趋势
+          </p>
+
+          <div class="hero-search">
+            <el-input
+              v-model="keyword"
+              placeholder="搜索热点关键词、事件或话题..."
+              size="large"
+              clearable
+              @keyup.enter="handleSearch"
             >
-              <div class="pinned-left">
-                <el-tag type="danger" effect="dark" round>置顶</el-tag>
-              </div>
-
-              <div class="pinned-content">
-                <div class="pinned-title">
-                  {{ cleanTitle(platform.pinned.title) }}
-                </div>
-                <div class="pinned-meta">
-                  <span>
-                    标签：{{ normalizeTag(platform.pinned.tags, platform.pinned.title) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="platform.dailyTop.length > 0">
-              <div
-                v-for="(item, index) in platform.dailyTop"
-                :key="getItemId(item, platform.key, index)"
-                class="hot-item"
-                @click="goDetail(getItemId(item, platform.key, index))"
-              >
-                <span class="rank">{{ index + 1 }}</span>
-                <span class="title">{{ cleanTitle(item.title) }}</span>
-                <span class="hot">{{ formatHotValue(getHotValue(item)) }}</span>
-              </div>
-            </div>
-
-            <el-empty v-else description="暂无数据" />
+              <template #prefix>
+                <span class="search-prefix">⌕</span>
+              </template>
+              <template #append>
+                <el-button type="primary" @click="handleSearch">搜索</el-button>
+              </template>
+            </el-input>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="visual-card">
+            <div class="bubble">···</div>
+            <div class="lens"></div>
+            <div class="bar bar-1"></div>
+            <div class="bar bar-2"></div>
+            <div class="bar bar-3"></div>
+            <div class="platform-layer layer-top"></div>
+            <div class="platform-layer layer-bottom"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 热门分类：轻量筛选带 -->
+      <section class="category-strip">
+        <div class="category-title">
+          <span class="flame">◆</span>
+          热门分类
+        </div>
+        <div class="category-list">
+          <button
+            v-for="category in categories"
+            :key="category.name"
+            class="category-chip"
+            :class="{ active: selectedCategory === category.name }"
+            @click="handleCategoryClick(category)"
+          >
+            <span class="category-icon">{{ category.icon }}</span>
+            <span>{{ category.name }}</span>
+            <small v-if="getCategoryCount(category) > 0">{{ getCategoryCount(category) }}</small>
+          </button>
+        </div>
+      </section>
+
+      <!-- 概览卡片 -->
+      <section class="overview-grid">
+        <article class="overview-card blue">
+          <div class="metric-icon">🔥</div>
+          <div class="metric-main">
+            <div class="metric-title">今日热点总数</div>
+            <div class="metric-value">{{ totalTodayCount }}</div>
+            <div class="metric-tip">统计今日进入榜单的不同热点</div>
+          </div>
+          <svg class="mini-chart" viewBox="0 0 120 46" preserveAspectRatio="none">
+            <polyline points="0,36 20,28 40,31 60,18 80,24 100,10 120,18" />
+          </svg>
+        </article>
+
+        <article class="overview-card purple">
+          <div class="metric-icon">✣</div>
+          <div class="metric-main">
+            <div class="metric-title">跨平台热点组</div>
+            <div class="metric-value">{{ crossGroupCount }}</div>
+            <div class="metric-tip">基于标题相似度与平台关联估算</div>
+          </div>
+          <svg class="mini-chart purple-line" viewBox="0 0 120 46" preserveAspectRatio="none">
+            <polyline points="0,34 20,30 40,20 60,24 80,13 100,8 120,16" />
+          </svg>
+        </article>
+
+        <article class="overview-card indigo">
+          <div class="metric-icon">AI</div>
+          <div class="metric-main">
+            <div class="metric-title">AI 简介能力</div>
+            <div class="metric-value small-value">运行中</div>
+            <div class="metric-tip">支持单平台与跨平台简介</div>
+          </div>
+          <svg class="mini-chart" viewBox="0 0 120 46" preserveAspectRatio="none">
+            <polyline points="0,30 20,26 40,28 60,17 80,22 100,12 120,18" />
+          </svg>
+        </article>
+
+        <article class="overview-card green">
+          <div class="metric-icon">◎</div>
+          <div class="metric-main">
+            <div class="metric-title">覆盖平台数</div>
+            <div class="metric-value">{{ platformCount }}</div>
+            <div class="metric-tip">微博 / 抖音 / B站</div>
+          </div>
+        </article>
+      </section>
+
+      <!-- 跨平台热点观察 -->
+      <section id="cross-hotspots" class="section-card cross-section">
+        <div class="section-header">
+          <div>
+            <h2><span>◆</span> 跨平台热点观察</h2>
+            <p>优先展示同时被多个平台关注的热点；暂无强匹配时展示三平台重点热点。</p>
+          </div>
+          <el-button type="primary" link @click="goCrossPlatform">查看更多</el-button>
+        </div>
+
+        <div v-if="crossHotspots.length > 0" class="cross-grid">
+          <article
+            v-for="(item, index) in crossHotspots"
+            :key="`${item.title}-${index}`"
+            class="cross-card"
+            @click="goDetail(item.id)"
+          >
+            <div class="cross-top">
+              <span class="cross-rank">{{ index + 1 }}</span>
+              <h3>{{ cleanTitle(item.title) }}</h3>
+              <el-tag size="small" type="primary">跨平台分析</el-tag>
+            </div>
+            <div class="platform-badges">
+              <span
+                v-for="platform in item.platforms"
+                :key="platform"
+                class="platform-badge"
+                :class="platform"
+              >
+                {{ getPlatformName(platform) }}
+              </span>
+            </div>
+            <p class="cross-summary">{{ item.summary }}</p>
+            <div class="cross-footer">
+              <span>热度持续跟踪</span>
+              <span>讨论量 {{ item.hotText }}</span>
+            </div>
+          </article>
+        </div>
+
+        <el-empty v-else description="暂无跨平台热点数据，等待调度器生成" />
+      </section>
+
+      <!-- 三平台 Top10 -->
+      <section id="platform-ranks" class="rank-section">
+        <div class="rank-section-header">
+          <div>
+            <h2>三平台今日榜单</h2>
+            <p>每个平台单独按今日最高热度展示，避免不同平台热度口径直接混排。</p>
+          </div>
+        </div>
+
+        <div class="rank-grid">
+          <article
+            v-for="platform in platforms"
+            :key="platform.key"
+            class="rank-card"
+            :class="platform.key"
+          >
+            <div class="rank-card-header">
+              <div class="rank-title-wrap">
+                <span class="platform-logo">{{ platform.icon }}</span>
+                <div>
+                  <h3>{{ platform.name }}今日 Top10</h3>
+                  <p>{{ platform.desc }}</p>
+                </div>
+              </div>
+              <button class="text-link" @click="goPlatform(platform.key, 'daily')">
+                查看完整榜单 →
+              </button>
+            </div>
+
+            <div v-loading="platform.loading" class="rank-list-wrap">
+              <div
+                v-if="platform.showPinned && platform.pinned"
+                class="pinned-block"
+                @click="goDetail(platform.pinned.id)"
+              >
+                <span class="pinned-tag">置顶</span>
+                <div class="pinned-content">
+                  <div class="pinned-title">{{ cleanTitle(platform.pinned.title) }}</div>
+                  <div class="pinned-meta">
+                    标签：{{ normalizeTag(platform.pinned.tags, platform.pinned.title) }}
+                  </div>
+                </div>
+              </div>
+
+              <template v-if="platform.dailyTop.length > 0">
+                <div
+                  v-for="(item, index) in platform.dailyTop.slice(0, 10)"
+                  :key="getItemId(item, platform.key, index)"
+                  class="rank-row"
+                  @click="goDetail(getItemId(item, platform.key, index))"
+                >
+                  <span class="rank-number" :class="{ top: index < 3 }">{{ index + 1 }}</span>
+                  <span class="rank-name">{{ cleanTitle(item.title) }}</span>
+                  <span class="rank-heat">🔥 {{ formatHotValue(getHotValue(item)) }}</span>
+                </div>
+              </template>
+
+              <el-empty v-else description="暂无数据" />
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -121,30 +267,42 @@ import {
 
 const router = useRouter()
 
-/**
- * 后续如果要新增平台，优先改这里。
- * 例如接入百度热搜，就加：
- * { key: 'baidu', name: '百度', desc: '百度热搜榜', showPinned: false }
- */
 const platformConfigs = [
   {
     key: 'weibo',
     name: '微博',
     desc: '微博热搜榜',
+    icon: '🔴',
     showPinned: true
   },
   {
     key: 'douyin',
     name: '抖音',
     desc: '抖音热榜',
+    icon: '♪',
     showPinned: false
   },
   {
     key: 'bilibili',
     name: 'B站',
-    desc: 'B站热门榜',
+    desc: 'B站热搜词条',
+    icon: '▣',
     showPinned: false
   }
+]
+
+const categories = [
+  { name: '全部', icon: '✨', keywords: [] },
+  { name: '社会民生', icon: '👥', keywords: ['社会', '民生', '通报', '回应', '警方', '官方', '网友', '辟谣'] },
+  { name: '娱乐', icon: '☆', keywords: ['明星', '演员', '综艺', '娱乐', '恋情', '新剧'] },
+  { name: '科技数码', icon: '▣', keywords: ['科技', '数码', '手机', 'AI', '华为', '苹果', '芯片', '机器人'] },
+  { name: '体育运动', icon: '🏃', keywords: ['体育', '世界杯', '足球', '篮球', '比赛', '运动'] },
+  { name: '游戏', icon: '🎮', keywords: ['游戏', '原神', '王者', '英雄联盟', 'LPL', 'Steam'] },
+  { name: '影视', icon: '🎬', keywords: ['电影', '电视剧', '影视', '票房', '导演'] },
+  { name: '财经', icon: '📈', keywords: ['财经', '股票', 'A股', '房价', '油价', '人民币'] },
+  { name: '汽车', icon: '🚘', keywords: ['汽车', '新能源', '车', '智驾', '特斯拉'] },
+  { name: '美食', icon: '🍜', keywords: ['美食', '餐饮', '饭店', '外卖', '菜'] },
+  { name: '更多', icon: '⌄', keywords: [] }
 ]
 
 const platforms = ref(
@@ -152,12 +310,105 @@ const platforms = ref(
     ...item,
     count: 0,
     dailyTop: [],
+    currentList: [],
     pinned: null,
+    latestTime: null,
     loading: false
   }))
 )
 
 const keyword = ref('')
+const selectedCategory = ref('全部')
+
+const totalTodayCount = computed(() => {
+  return platforms.value.reduce((sum, platform) => sum + Number(platform.count || 0), 0)
+})
+
+const platformCount = computed(() => platforms.value.length)
+
+const allLoadedItems = computed(() => {
+  const list = []
+  platforms.value.forEach(platform => {
+    ;(platform.dailyTop || []).forEach(item => list.push({ ...item, _platform: platform.key }))
+    ;(platform.currentList || []).forEach(item => list.push({ ...item, _platform: platform.key }))
+  })
+  return list
+})
+
+const crossGroups = computed(() => {
+  const map = new Map()
+
+  allLoadedItems.value.forEach(item => {
+    const title = cleanTitle(item.title)
+    if (!title) return
+
+    const key = normalizeTitleForGroup(title)
+    if (!key) return
+
+    if (!map.has(key)) {
+      map.set(key, {
+        title,
+        items: [],
+        platforms: new Set(),
+        maxHotValue: 0
+      })
+    }
+
+    const group = map.get(key)
+    group.items.push(item)
+    group.platforms.add(item._platform)
+    group.maxHotValue = Math.max(group.maxHotValue, Number(getHotValue(item)) || 0)
+  })
+
+  return Array.from(map.values()).filter(group => group.platforms.size >= 2)
+})
+
+const crossGroupCount = computed(() => crossGroups.value.length)
+
+const crossHotspots = computed(() => {
+  const realGroups = crossGroups.value
+    .sort((a, b) => b.platforms.size - a.platforms.size || b.maxHotValue - a.maxHotValue)
+    .slice(0, 3)
+    .map(group => buildCrossCard(group))
+
+  if (realGroups.length >= 3) return realGroups
+
+  const usedIds = new Set(realGroups.map(item => item.id))
+  const fallback = allLoadedItems.value
+    .filter(item => !usedIds.has(getItemId(item)))
+    .sort((a, b) => (Number(getHotValue(b)) || 0) - (Number(getHotValue(a)) || 0))
+    .slice(0, 3 - realGroups.length)
+    .map(item => ({
+      id: getItemId(item),
+      title: cleanTitle(item.title),
+      platforms: [item._platform],
+      hotText: formatHotValue(getHotValue(item)),
+      summary: `该热点正在${getPlatformName(item._platform)}平台受到关注，系统已记录其榜单表现，可继续进入详情页查看趋势和 AI 简介。`
+    }))
+
+  return [...realGroups, ...fallback]
+})
+
+const lastSyncText = computed(() => {
+  const times = platforms.value
+    .map(platform => platform.latestTime)
+    .filter(Boolean)
+    .map(value => new Date(value).getTime())
+    .filter(value => !Number.isNaN(value))
+
+  if (!times.length) return '最近同步：刚刚刷新'
+
+  const latest = Math.max(...times)
+  const diffMinutes = Math.max(0, Math.round((Date.now() - latest) / 60000))
+
+  if (diffMinutes <= 1) return '最近同步：1分钟内'
+  if (diffMinutes < 60) return `最近同步：${diffMinutes}分钟前`
+
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) return `最近同步：${diffHours}小时前`
+
+  return '最近同步：今日数据'
+})
 
 const handleSearch = () => {
   const value = keyword.value.trim()
@@ -168,29 +419,67 @@ const handleSearch = () => {
 
   router.push({
     path: '/search',
-    query: {
-      keyword: value
-    }
+    query: { keyword: value }
   })
+}
+
+const handleCategoryClick = (category) => {
+  selectedCategory.value = category.name
+
+  if (category.name === '全部') {
+    ElMessage.info('已显示首页全部热点概览')
+    return
+  }
+
+  if (category.name === '更多') {
+    ElMessage.info('更多分类可以后续扩展为分类热点页')
+    return
+  }
+
+  router.push({
+    path: '/search',
+    query: { keyword: category.name }
+  })
+}
+
+const goHome = () => {
+  router.push('/')
+}
+
+const goHistory = () => {
+  router.push({
+    path: '/platform/weibo',
+    query: { mode: 'history' }
+  })
+}
+
+const goCrossPlatform = () => {
+  router.push('/cross-platform')
 }
 
 const goPlatform = (platform, mode = 'current') => {
   router.push({
     path: `/platform/${platform}`,
-    query: {
-      mode
-    }
+    query: { mode }
   })
 }
 
 const goDetail = (id) => {
-  if (!id) return
+  if (!id || String(id).includes('-')) return
   router.push(`/detail/${id}`)
+}
+
+const scrollToCrossHotspots = () => {
+  document.querySelector('#cross-hotspots')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const scrollToPlatformRanks = () => {
+  document.querySelector('#platform-ranks')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 const cleanTitle = (title) => {
   if (!title) return ''
-  return String(title).replace(/^#|#$/g, '')
+  return String(title).replace(/^#|#$/g, '').trim()
 }
 
 const normalizeTag = (tag, title = '') => {
@@ -212,12 +501,20 @@ const normalizeTag = (tag, title = '') => {
   return value || '无'
 }
 
+const normalizeTitleForGroup = (title) => {
+  return cleanTitle(title)
+    .toLowerCase()
+    .replace(/[\s#【】《》“”"'，。！？、：:；;,.!?\-_/|]/g, '')
+    .replace(/热搜|回应|官方|网友|最新/g, '')
+    .slice(0, 18)
+}
+
 const getHotValue = (item) => {
-  return item.maxHotValue ?? item.hotValue ?? item.hot_value
+  return item?.maxHotValue ?? item?.hotValue ?? item?.hot_value ?? item?.max_hot_value
 }
 
 const getItemId = (item, platformKey = '', index = 0) => {
-  return item.id ?? item.hotspotId ?? item.hotspot_id ?? `${platformKey}-${index}`
+  return item?.id ?? item?.hotspotId ?? item?.hotspot_id ?? `${platformKey}-${index}`
 }
 
 const formatHotValue = (value) => {
@@ -234,23 +531,59 @@ const formatHotValue = (value) => {
   return String(num)
 }
 
+const getPlatformName = (platformKey) => {
+  const item = platformConfigs.find(platform => platform.key === platformKey)
+  return item ? item.name : platformKey
+}
+
 const getStatCount = (statsList, platformKey) => {
   const item = statsList.find(i => i.platform === platformKey)
   return item ? (item.count ?? item.total ?? item.value ?? 0) : 0
+}
+
+const getCategoryCount = (category) => {
+  if (category.name === '全部') return allLoadedItems.value.length
+  if (category.name === '更多') return 0
+  if (!category.keywords?.length) return 0
+
+  return allLoadedItems.value.filter(item => {
+    const text = `${item.title || ''} ${item.tags || ''}`
+    return category.keywords.some(word => text.includes(word))
+  }).length
+}
+
+const buildCrossCard = (group) => {
+  const first = group.items[0]
+  return {
+    id: getItemId(first),
+    title: group.title,
+    platforms: Array.from(group.platforms),
+    hotText: formatHotValue(group.maxHotValue),
+    summary: `该话题在${Array.from(group.platforms).map(getPlatformName).join('、')}等平台同时出现，说明它已经具备跨平台传播特征，适合进一步查看联合分析和材料摘要。`
+  }
 }
 
 const loadPlatformData = async (platform) => {
   platform.loading = true
 
   try {
-    const dailyTop = await getDailyTop(platform.key, 10).catch(() => [])
-    platform.dailyTop = Array.isArray(dailyTop) ? dailyTop : []
+    const [dailyTopResult, currentListResult] = await Promise.all([
+      getDailyTop(platform.key, 10).catch(() => []),
+      getHotspotsByPlatform(platform.key).catch(() => [])
+    ])
+
+    platform.dailyTop = Array.isArray(dailyTopResult) ? dailyTopResult : []
+    platform.currentList = Array.isArray(currentListResult) ? currentListResult : []
 
     if (platform.showPinned) {
-      const currentList = await getHotspotsByPlatform(platform.key).catch(() => [])
-      const list = Array.isArray(currentList) ? currentList : []
-      platform.pinned = list.find(item => item.isSpecial) || null
+      platform.pinned = platform.currentList.find(item => item.isSpecial) || null
     }
+
+    const latestItem = platform.currentList
+      .filter(item => item.crawlTime || item.crawl_time)
+      .sort((a, b) => new Date(b.crawlTime || b.crawl_time) - new Date(a.crawlTime || a.crawl_time))[0]
+
+    platform.latestTime = latestItem?.crawlTime || latestItem?.crawl_time || null
   } finally {
     platform.loading = false
   }
@@ -260,155 +593,924 @@ onMounted(async () => {
   const statsList = await getPlatformStats().catch(() => [])
 
   platforms.value.forEach(platform => {
-    platform.count = getStatCount(statsList, platform.key)
+    platform.count = getStatCount(Array.isArray(statsList) ? statsList : [], platform.key)
   })
 
-  await Promise.all(
-    platforms.value.map(platform => loadPlatformData(platform))
-  )
+  await Promise.all(platforms.value.map(platform => loadPlatformData(platform)))
 })
 </script>
 
 <style scoped>
-.home-page {
-  max-width: 1280px;
-  margin: 30px auto;
-  padding: 20px;
+:global(html) {
+  background: #f5f8ff;
 }
 
-.header {
-  margin-bottom: 30px;
+:global(body) {
+  margin: 0;
+  background: #f5f8ff;
+  color: #172033;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
 }
 
-.header h1 {
-  font-size: 36px;
-  margin-bottom: 10px;
+:global(*) {
+  box-sizing: border-box;
 }
 
-.header p {
-  color: #666;
-  margin-bottom: 20px;
+.home-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(75, 133, 255, 0.14), transparent 26%),
+    radial-gradient(circle at 88% 14%, rgba(128, 84, 255, 0.14), transparent 28%),
+    linear-gradient(180deg, #f8fbff 0%, #f4f7fc 48%, #f7f9ff 100%);
 }
 
-.search-box {
-  max-width: 600px;
-}
-
-.stat-row {
-  margin-bottom: 20px;
-}
-
-.stat-row .el-col {
-  margin-bottom: 20px;
-}
-
-.platform-row .el-col {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  text-align: center;
-}
-
-.stat-title {
-  font-size: 16px;
-  color: #666;
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: #409eff;
-  margin-top: 8px;
-}
-
-.stat-tip {
-  font-size: 12px;
-  color: #999;
-  margin-top: 8px;
-}
-
-.platform-card {
-  height: 100%;
-}
-
-.card-header {
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 62px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  font-weight: bold;
+  gap: 16px;
+  padding: 0 34px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(80, 116, 180, 0.12);
+  box-shadow: 0 10px 30px rgba(64, 102, 180, 0.08);
 }
 
-.platform-desc {
-  margin-top: 4px;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 310px;
+  cursor: pointer;
+}
+
+.brand-logo {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  color: #fff;
+  font-size: 21px;
+  font-weight: 900;
+  background: linear-gradient(135deg, #2275ff, #7d5cff);
+  box-shadow: 0 12px 26px rgba(48, 101, 255, 0.28);
+}
+
+.brand-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #13213d;
+  line-height: 1.2;
+}
+
+.brand-subtitle {
+  margin-top: 3px;
   font-size: 12px;
-  font-weight: normal;
-  color: #909399;
+  color: #667085;
+  letter-spacing: 0.02em;
 }
 
-.pinned-block {
+.nav-tabs {
   display: flex;
-  gap: 12px;
   align-items: center;
-  padding: 14px 0 16px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(245, 248, 255, 0.8);
 }
 
-.pinned-block:hover {
-  background: #f8f9fb;
-}
-
-.pinned-content {
-  flex: 1;
-}
-
-.pinned-title {
-  font-size: 18px;
+.nav-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 14px;
+  padding: 10px 17px;
+  color: #344054;
+  font-size: 15px;
   font-weight: 700;
-  color: #303133;
-  margin-bottom: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.pinned-meta {
-  color: #909399;
-  font-size: 13px;
+.nav-tab:hover,
+.nav-tab.active {
+  color: #1d5fff;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(36, 101, 255, 0.12);
 }
 
-.hot-item {
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: -7px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1d6bff, #6e5cff);
+}
+
+.nav-icon {
+  font-size: 17px;
+}
+
+.sync-status {
   display: flex;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-  transition: all 0.2s;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 265px;
+  padding: 8px 13px;
+  border: 1px solid rgba(82, 126, 200, 0.13);
+  border-radius: 14px;
+  color: #344054;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.78);
 }
 
-.hot-item:hover {
-  background: #f8f9fb;
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.1);
 }
 
-.rank {
-  width: 36px;
-  font-weight: bold;
-  color: #f56c6c;
+.status-bars {
+  color: #246bff;
+  letter-spacing: -2px;
+}
+
+.home-page {
+  width: min(1640px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 12px 0 40px;
+}
+
+.hero-section {
+  position: relative;
+  min-height: 174px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: center;
+  overflow: hidden;
+  margin-bottom: 12px;
+  border-radius: 0 0 22px 22px;
+  background:
+    linear-gradient(135deg, rgba(230, 241, 255, 0.92), rgba(246, 248, 255, 0.96)),
+    radial-gradient(circle at 90% 20%, rgba(79, 110, 255, 0.18), transparent 28%);
+}
+
+.hero-bg {
+  position: absolute;
+  width: 460px;
+  height: 140px;
+  border-radius: 999px;
+  opacity: 0.55;
+  filter: blur(2px);
+}
+
+.hero-bg-left {
+  left: -120px;
+  bottom: 18px;
+  background: rgba(74, 133, 255, 0.14);
+  transform: rotate(-8deg);
+}
+
+.hero-bg-right {
+  right: 60px;
+  top: 26px;
+  background: rgba(127, 91, 255, 0.14);
+  transform: rotate(10deg);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 720px;
+  justify-self: center;
+  text-align: center;
+  padding: 22px 20px 24px;
+}
+
+.hero-content h1 {
+  margin: 0;
+  color: #121826;
+  font-size: clamp(34px, 3.3vw, 48px);
+  line-height: 1.12;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.hero-content h1 span {
+  margin-left: 4px;
+  color: #2563ff;
+}
+
+.hero-content p {
+  margin: 10px 0 18px;
+  color: #56627a;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.hero-search {
+  max-width: 560px;
+  margin: 0 auto;
+  border-radius: 16px;
+  box-shadow: 0 16px 45px rgba(68, 103, 180, 0.16);
+}
+
+.hero-search :deep(.el-input__wrapper) {
+  min-height: 46px;
+  border-radius: 16px 0 0 16px;
+  box-shadow: 0 0 0 1px rgba(76, 111, 180, 0.12) inset;
+}
+
+.hero-search :deep(.el-input-group__append) {
+  border-radius: 0 16px 16px 0;
+  overflow: hidden;
+  background: linear-gradient(135deg, #246bff, #154ee8);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.hero-search :deep(.el-button) {
+  min-width: 84px;
+  height: 46px;
+  border: 0;
+  color: #fff;
+  font-weight: 800;
+  background: transparent;
+}
+
+.search-prefix {
+  color: #667085;
   font-size: 20px;
 }
 
-.title {
+.hero-visual {
+  position: relative;
+  z-index: 2;
+  height: 174px;
+  display: grid;
+  place-items: center;
+}
+
+.visual-card {
+  position: relative;
+  width: 210px;
+  height: 146px;
+}
+
+.platform-layer {
+  position: absolute;
+  left: 34px;
+  width: 140px;
+  height: 50px;
+  border-radius: 24px;
+  transform: skewX(-14deg) rotate(-3deg);
+}
+
+.layer-bottom {
+  bottom: 10px;
+  background: linear-gradient(135deg, #4278ff, #765eff);
+  box-shadow: 0 24px 50px rgba(72, 98, 238, 0.32);
+}
+
+.layer-top {
+  bottom: 40px;
+  background: linear-gradient(135deg, #f9fbff, #dce7ff);
+  border: 1px solid rgba(80, 120, 240, 0.14);
+  box-shadow: 0 14px 24px rgba(90, 116, 180, 0.15);
+}
+
+.bubble {
+  position: absolute;
+  z-index: 4;
+  left: 24px;
+  top: 26px;
+  width: 50px;
+  height: 32px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 21px;
+  letter-spacing: 2px;
+  background: linear-gradient(135deg, #3785ff, #635bff);
+  box-shadow: 0 18px 34px rgba(70, 112, 255, 0.28);
+}
+
+.lens {
+  position: absolute;
+  z-index: 5;
+  right: 20px;
+  top: 8px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 8px solid #386cff;
+  box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.7), 0 18px 36px rgba(56, 108, 255, 0.3);
+}
+
+.lens::after {
+  content: '';
+  position: absolute;
+  width: 36px;
+  height: 10px;
+  right: -28px;
+  bottom: -18px;
+  border-radius: 999px;
+  transform: rotate(44deg);
+  background: #386cff;
+}
+
+.bar {
+  position: absolute;
+  z-index: 4;
+  bottom: 61px;
+  width: 16px;
+  border-radius: 999px 999px 4px 4px;
+}
+
+.bar-1 {
+  left: 106px;
+  height: 32px;
+  background: #ff78b7;
+}
+
+.bar-2 {
+  left: 130px;
+  height: 46px;
+  background: #6e7cff;
+}
+
+.bar-3 {
+  left: 154px;
+  height: 36px;
+  background: #37b7ff;
+}
+
+.category-strip {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(99, 130, 190, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 30px rgba(87, 113, 160, 0.08);
+}
+
+.category-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 112px;
+  color: #172033;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.flame {
+  color: #246bff;
+}
+
+.category-list {
+  display: flex;
   flex: 1;
-  margin: 0 10px;
-  color: #303133;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  gap: 8px;
+}
+
+.category-chip {
+  min-height: 30px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid rgba(88, 117, 172, 0.12);
+  border-radius: 12px;
+  color: #344054;
+  font-weight: 700;
+  background: #f8faff;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.category-chip small {
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #475467;
+  font-size: 12px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(88, 117, 172, 0.14);
+}
+
+.category-chip:hover,
+.category-chip.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #246bff, #665cff);
+  box-shadow: 0 10px 18px rgba(48, 93, 255, 0.18);
+}
+
+.category-chip.active small,
+.category-chip:hover small {
+  color: #1f5fff;
+}
+
+.category-icon {
+  font-size: 15px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.overview-card {
+  position: relative;
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  padding: 15px 18px;
+  border: 1px solid rgba(99, 130, 190, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 34px rgba(87, 113, 160, 0.09);
+}
+
+.metric-icon {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  color: #fff;
+  font-size: 23px;
+  font-weight: 900;
+}
+
+.overview-card.blue .metric-icon {
+  background: linear-gradient(135deg, #3a85ff, #246bff);
+}
+
+.overview-card.purple .metric-icon {
+  background: linear-gradient(135deg, #a76bff, #725cff);
+}
+
+.overview-card.indigo .metric-icon {
+  font-size: 20px;
+  background: linear-gradient(135deg, #6b72ff, #364dff);
+}
+
+.overview-card.green .metric-icon {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.metric-title {
+  color: #344054;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.metric-value {
+  margin-top: 4px;
+  color: #111827;
+  font-size: 27px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.small-value {
+  font-size: 21px;
+}
+
+.metric-tip {
+  margin-top: 4px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.mini-chart {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  width: 78px;
+  height: 28px;
+  fill: none;
+  stroke: #246bff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+}
+
+.purple-line {
+  stroke: #725cff;
+}
+
+.section-card,
+.rank-card {
+  border: 1px solid rgba(99, 130, 190, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow: 0 14px 34px rgba(87, 113, 160, 0.09);
+}
+
+.cross-section {
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  scroll-margin-top: 90px;
+}
+
+.section-header,
+.rank-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.section-header h2,
+.rank-section-header h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.section-header h2 span {
+  color: #246bff;
+}
+
+.section-header p,
+.rank-section-header p {
+  margin: 3px 0 0;
+  color: #667085;
+  font-size: 13px;
+}
+
+.cross-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.cross-card {
+  min-height: 126px;
+  padding: 14px 16px;
+  border: 1px solid rgba(87, 121, 190, 0.13);
+  border-radius: 17px;
+  background: linear-gradient(180deg, #fff, #fbfdff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cross-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 36px rgba(76, 106, 168, 0.14);
+}
+
+.cross-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cross-rank {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  background: linear-gradient(135deg, #ff4d4f, #ff8a35);
+}
+
+.cross-top h3 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: #182235;
+  font-size: 16px;
+  font-weight: 900;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.hot {
-  color: #999;
-  min-width: 72px;
+.platform-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.platform-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+  background: #f2f6ff;
+}
+
+.platform-badge.weibo {
+  color: #e5484d;
+  background: #fff1f2;
+}
+
+.platform-badge.douyin {
+  color: #111827;
+  background: #f4f5f7;
+}
+
+.platform-badge.bilibili {
+  color: #fb5ca8;
+  background: #fff0f7;
+}
+
+.cross-summary {
+  min-height: 40px;
+  margin: 0 0 8px;
+  color: #4a5568;
+  font-size: 13px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cross-footer {
+  display: flex;
+  justify-content: space-between;
+  color: #667085;
+  font-size: 13px;
+}
+
+.rank-section {
+  scroll-margin-top: 90px;
+}
+
+.rank-section-header {
+  padding: 0 4px;
+}
+
+.rank-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.rank-card {
+  min-height: 354px;
+  padding: 16px 18px;
+}
+
+.rank-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(100, 122, 160, 0.12);
+}
+
+.rank-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.platform-logo {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  font-weight: 900;
+  background: #f3f6ff;
+}
+
+.rank-card.weibo .platform-logo {
+  background: #fff0f1;
+}
+
+.rank-card.douyin .platform-logo {
+  color: #fff;
+  background: #111827;
+}
+
+.rank-card.bilibili .platform-logo {
+  color: #fff;
+  background: #fb5ca8;
+}
+
+.rank-title-wrap h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.rank-title-wrap p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 12px;
+}
+
+.text-link {
+  border: 0;
+  padding: 0;
+  color: #246bff;
+  font-size: 13px;
+  font-weight: 800;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rank-list-wrap {
+  min-height: 282px;
+}
+
+.pinned-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px;
+  margin-bottom: 8px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #fff7ed, #fff1f2);
+  cursor: pointer;
+}
+
+.pinned-tag {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  background: #ef4444;
+}
+
+.pinned-content {
+  min-width: 0;
+}
+
+.pinned-title {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-meta {
+  margin-top: 4px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 82px;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 5px 2px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.rank-row:hover {
+  background: #f5f8ff;
+}
+
+.rank-number {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 900;
+  background: #eef2f7;
+}
+
+.rank-number.top {
+  color: #fff;
+  background: linear-gradient(135deg, #ff4d4f, #ffb02e);
+}
+
+.rank-name {
+  min-width: 0;
+  color: #29334d;
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-heat {
+  color: #ff5b73;
+  font-size: 13px;
+  font-weight: 800;
   text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .top-bar {
+    padding: 0 20px;
+  }
+
+  .brand {
+    min-width: 260px;
+  }
+
+  .sync-status {
+    min-width: auto;
+  }
+
+  .hero-section {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-visual {
+    display: none;
+  }
+
+  .overview-grid,
+  .rank-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .top-bar {
+    position: static;
+    height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .brand,
+  .sync-status {
+    min-width: 0;
+  }
+
+  .nav-tabs {
+    overflow-x: auto;
+  }
+
+  .home-page {
+    width: min(100vw - 24px, 100%);
+  }
+
+  .category-strip {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .overview-grid,
+  .cross-grid,
+  .rank-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

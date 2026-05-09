@@ -17,9 +17,13 @@ except Exception:
 from db_config import DB_CONFIG
 
 try:
-    from cross_platform_matcher import analyze_cross_platform_status
+    from cross_platform_matcher import (
+        analyze_cross_platform_status,
+        update_cross_platform_topic_summary,
+    )
 except Exception as import_error:
     analyze_cross_platform_status = None
+    update_cross_platform_topic_summary = None
     CROSS_PLATFORM_IMPORT_ERROR = import_error
 else:
     CROSS_PLATFORM_IMPORT_ERROR = None
@@ -30,12 +34,15 @@ ENV_FILE = BASE_DIR / ".env"
 if load_dotenv:
     load_dotenv(ENV_FILE)
 
+from material_config import COMMENTS_PER_MATERIAL, MATERIALS_PER_HOTSPOT
+
 API_KEY = os.getenv("ZHIPUAI_API_KEY")
 MODEL_NAME = os.getenv("ZHIPUAI_MODEL", "glm-4.5-air")
 
-# 当前 AI 分析规则：最多读取 3 条帖子/视频，每条帖子/视频最多读取 10 条高赞评论。
-POST_LIMIT = 3
-COMMENTS_PER_POST = 10
+# 当前 AI 分析规则与三平台材料入库标准保持一致：
+# 最多读取 3 条帖子/视频，每条帖子/视频最多读取 5 条高赞评论。
+POST_LIMIT = MATERIALS_PER_HOTSPOT
+COMMENTS_PER_POST = COMMENTS_PER_MATERIAL
 MATERIAL_MAX_CHARS = 3600
 
 # 跨平台综合分析时，最多给模型传入的材料字符数。
@@ -1319,6 +1326,16 @@ def run_ai_summary_worker(limit: int = 3) -> int:
                                     summary=summary,
                                     now=now,
                                 )
+
+                                topic_id = None
+                                if update_cross_platform_topic_summary is not None:
+                                    topic_id = update_cross_platform_topic_summary(
+                                        cursor=cursor,
+                                        cross_result=cross_result,
+                                        summary=summary,
+                                        now=now,
+                                    )
+
                                 mark_ai_tasks_done_for_hotspots(cursor, written_ids)
 
                                 for written_id in written_ids:
@@ -1329,6 +1346,7 @@ def run_ai_summary_worker(limit: int = 3) -> int:
 
                                 print(
                                     f"跨平台简介已写入同组热点：{written_ids}，"
+                                    f"topic_id={topic_id}，"
                                     f"并已将这些热点已有 AI 任务标记为 done"
                                 )
                                 continue

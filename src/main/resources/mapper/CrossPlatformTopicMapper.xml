@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.hotspotanalyzer.mapper.CrossPlatformTopicMapper">
+
+    <select id="findTopics" resultType="com.example.hotspotanalyzer.vo.CrossPlatformTopicVO">
+        SELECT
+            id,
+            main_title AS mainTitle,
+            summary,
+            topic_status AS topicStatus,
+            confidence_score AS confidenceScore,
+            platform_count AS platformCount,
+            hotspot_count AS hotspotCount,
+            related_platforms AS relatedPlatforms,
+            first_seen_time AS firstSeenTime,
+            last_seen_time AS lastSeenTime,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM cross_platform_topic
+        WHERE topic_status = 'active'
+        <if test="platforms != null and platforms.size() &gt; 0">
+            <foreach collection="platforms" item="platform" separator="">
+                AND FIND_IN_SET(#{platform}, related_platforms)
+            </foreach>
+        </if>
+        ORDER BY
+            platform_count DESC,
+            last_seen_time DESC,
+            id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findTopicById" resultType="com.example.hotspotanalyzer.vo.CrossPlatformTopicVO">
+        SELECT
+            id,
+            main_title AS mainTitle,
+            summary,
+            topic_status AS topicStatus,
+            confidence_score AS confidenceScore,
+            platform_count AS platformCount,
+            hotspot_count AS hotspotCount,
+            related_platforms AS relatedPlatforms,
+            first_seen_time AS firstSeenTime,
+            last_seen_time AS lastSeenTime,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM cross_platform_topic
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="findHotspotsByTopicId" resultType="com.example.hotspotanalyzer.vo.CrossPlatformHotspotVO">
+        SELECT
+            th.topic_id AS topicId,
+            th.hotspot_id AS hotspotId,
+            th.platform,
+            th.title,
+            th.match_score AS matchScore,
+            th.is_primary AS `primary`,
+            h.rank_num AS rankNum,
+            h.hot_value AS hotValue,
+            h.source_url AS sourceUrl,
+            h.crawl_time AS crawlTime
+        FROM cross_platform_topic_hotspot th
+        LEFT JOIN hotspot h ON th.hotspot_id = h.id
+        WHERE th.topic_id = #{topicId}
+        ORDER BY
+            th.is_primary DESC,
+            FIELD(th.platform, 'weibo', 'douyin', 'bilibili'),
+            th.id ASC
+    </select>
+</mapper>

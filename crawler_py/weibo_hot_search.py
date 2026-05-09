@@ -150,7 +150,7 @@ def extract_tag(item: Dict[str, Any], title: Optional[str]) -> Optional[str]:
     return None
 
 
-def parse_normal_item(item: Dict[str, Any], rank_num: int) -> Optional[Dict[str, Any]]:
+def parse_normal_item(item: Dict[str, Any], rank_num: int, crawl_time: str) -> Optional[Dict[str, Any]]:
     word = extract_normal_title(item)
     if not word:
         return None
@@ -177,11 +177,11 @@ def parse_normal_item(item: Dict[str, Any], rank_num: int) -> Optional[Dict[str,
         "isRanked": True,
         "isSpecial": False,
         "sourceUrl": source_url,
-        "crawlTime": datetime.now().isoformat(timespec="seconds"),
+        "crawlTime": crawl_time,
     }
 
 
-def parse_special_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def parse_special_item(item: Dict[str, Any], crawl_time: str) -> Optional[Dict[str, Any]]:
     """
     解析置顶/特殊项
     这类数据通常不参与正常排名，所以：
@@ -215,7 +215,7 @@ def parse_special_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "isRanked": False,
         "isSpecial": True,
         "sourceUrl": source_url,
-        "crawlTime": datetime.now().isoformat(timespec="seconds"),
+        "crawlTime": crawl_time,
     }
 
 
@@ -234,7 +234,7 @@ def append_if_valid(result: List[Dict[str, Any]], parsed: Optional[Dict[str, Any
     seen_titles.add(title)
 
 
-def try_extract_special_items(data_obj: Dict[str, Any], result: List[Dict[str, Any]], seen_titles: set) -> None:
+def try_extract_special_items(data_obj: Dict[str, Any], result: List[Dict[str, Any]], seen_titles: set, crawl_time: str) -> None:
     """
     尝试从多个可能字段中提取置顶/特殊项
     微博接口这部分结构不完全稳定，所以这里做兼容处理
@@ -258,13 +258,13 @@ def try_extract_special_items(data_obj: Dict[str, Any], result: List[Dict[str, A
             continue
 
         if isinstance(value, dict):
-            parsed = parse_special_item(value)
+            parsed = parse_special_item(value, crawl_time)
             append_if_valid(result, parsed, seen_titles)
 
         elif isinstance(value, list):
             for item in value:
                 if isinstance(item, dict):
-                    parsed = parse_special_item(item)
+                    parsed = parse_special_item(item, crawl_time)
                     append_if_valid(result, parsed, seen_titles)
 
 
@@ -288,9 +288,13 @@ def fetch_weibo_hot_search() -> List[Dict[str, Any]]:
 
     results: List[Dict[str, Any]] = []
     seen_titles = set()
+    # 同一轮微博榜单必须使用同一个 crawl_time。
+    # 平台页当前榜单是按 snapshot 中 MAX(crawl_time) 取最新一轮，
+    # 如果每条热点各自 datetime.now()，跨秒时可能导致同一轮榜单被拆开。
+    batch_crawl_time = datetime.now().isoformat(timespec="seconds")
 
     # 先抓置顶/特殊项
-    try_extract_special_items(data_obj, results, seen_titles)
+    try_extract_special_items(data_obj, results, seen_titles, batch_crawl_time)
 
     # 再抓普通热搜
     rank = 1
@@ -298,7 +302,7 @@ def fetch_weibo_hot_search() -> List[Dict[str, Any]]:
         if not isinstance(item, dict):
             continue
 
-        parsed = parse_normal_item(item, rank)
+        parsed = parse_normal_item(item, rank, batch_crawl_time)
         if not parsed:
             continue
 

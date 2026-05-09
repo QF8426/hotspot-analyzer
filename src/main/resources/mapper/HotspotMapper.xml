@@ -125,7 +125,9 @@
         ) t ON h.id = t.hotspot_id
         WHERE h.platform = #{platform}
         ORDER BY t.max_hot_value DESC, h.id DESC
-        LIMIT #{limit}
+        <if test="limit != null and limit &gt; 0">
+            LIMIT #{limit}
+        </if>
     </select>
 
     <select id="findHistoryByPlatformAndDate" resultType="com.example.hotspotanalyzer.vo.HistoryHotVO">

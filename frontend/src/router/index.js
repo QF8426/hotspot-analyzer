@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import SearchView from '../views/SearchView.vue'
 import DetailView from '../views/DetailView.vue'
 import PlatformView from '../views/PlatformView.vue'
+import CrossPlatformView from '../views/CrossPlatformView.vue'
 
 const routes = [
   {
@@ -24,6 +25,11 @@ const routes = [
     path: '/platform/:platform',
     name: 'platform',
     component: PlatformView
+  },
+  {
+    path: '/cross-platform',
+    name: 'crossPlatform',
+    component: CrossPlatformView
   }
 ]
 

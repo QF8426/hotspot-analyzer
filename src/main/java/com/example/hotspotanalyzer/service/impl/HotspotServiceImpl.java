@@ -46,9 +46,8 @@ public class HotspotServiceImpl implements HotspotService {
 
     @Override
     public List<DailyTopHotVO> getDailyTopByPlatform(String platform, Integer limit) {
-        if (limit == null || limit <= 0) {
-            limit = 10;
-        }
+        // limit 为空时返回今日全部热点；首页仍可传 limit=10 获取 Top10。
+        // 这样平台页“查看今日全部热点”不会再被前端固定 100/200 条截断。
         return hotspotMapper.findDailyTopByPlatform(platform, limit);
     }
 

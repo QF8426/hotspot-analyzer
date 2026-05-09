@@ -20,6 +20,11 @@ except Exception:
     pass
 
 from db_config import DB_CONFIG
+from material_config import (
+    BILIBILI_COMMENT_CANDIDATE_SIZE,
+    COMMENTS_PER_MATERIAL,
+    MATERIALS_PER_HOTSPOT,
+)
 
 
 BILIBILI_PLATFORM = "bilibili"
@@ -29,13 +34,11 @@ TASK_PROCESSING_STATUS = "processing_bilibili"
 TASK_DONE_STATUS = "done"
 TASK_FAILED_STATUS = "failed"
 
-POST_LIMIT_PER_HOTSPOT = 3
-
-# 每条视频最多抓 5 条评论；每个热点 3 条视频，理论最多 15 条评论
-COMMENTS_PER_VIDEO = 5
-
-# 候选评论池调大一点，再按点赞数排序取前 5
-COMMENT_CANDIDATE_SIZE = 50
+# 统一材料采集标准：每个热点最多保存 3 条主体材料，每条主体材料最多保存 5 条高赞评论。
+# B站仍会扩大候选池，再按点赞数排序取前 5。
+POST_LIMIT_PER_HOTSPOT = MATERIALS_PER_HOTSPOT
+COMMENTS_PER_VIDEO = COMMENTS_PER_MATERIAL
+COMMENT_CANDIDATE_SIZE = BILIBILI_COMMENT_CANDIDATE_SIZE
 
 BILIBILI_HOME_URL = "https://www.bilibili.com/"
 BILIBILI_NAV_API = "https://api.bilibili.com/x/web-interface/nav"

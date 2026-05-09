@@ -920,6 +920,310 @@ def build_cross_platform_material_bundle(
     }
 
 
+# =========================
+# 跨平台主题表写入与迁移支撑
+# =========================
+
+def collect_topic_hotspots(cross_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    从 cross_result / related_result 中提取同组热点，去重并排序。
+    兼容 analyze_cross_platform_status、主动扫描 group、迁移脚本构造出来的结果。
+    """
+    all_hotspots = cross_result.get("all_hotspots") or []
+    current = cross_result.get("current") or {}
+    matches = cross_result.get("matches") or []
+
+    candidates: List[Dict[str, Any]] = []
+    if current:
+        candidates.append(current)
+    candidates.extend(matches)
+    candidates.extend(all_hotspots)
+
+    result: List[Dict[str, Any]] = []
+    seen = set()
+
+    for item in candidates:
+        if not item:
+            continue
+        hotspot_id = item.get("id") or item.get("hotspot_id")
+        if not hotspot_id:
+            continue
+        try:
+            hotspot_id = int(hotspot_id)
+        except Exception:
+            continue
+        if hotspot_id in seen:
+            continue
+
+        row = dict(item)
+        row["id"] = hotspot_id
+        result.append(row)
+        seen.add(hotspot_id)
+
+    result.sort(
+        key=lambda item: (
+            item.get("rank_num") if item.get("rank_num") is not None else 999999,
+            -(float(item.get("hot_value") or 0)),
+            item.get("id") or 0,
+        )
+    )
+    return result
+
+
+def choose_topic_primary_hotspot(hotspots: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    选择联合热点的主展示标题。
+    优先排名靠前，其次热度/排序值高，其次 id 小。
+    """
+    if not hotspots:
+        return None
+
+    return sorted(
+        hotspots,
+        key=lambda item: (
+            item.get("rank_num") if item.get("rank_num") is not None else 999999,
+            -(float(item.get("hot_value") or 0)),
+            item.get("id") or 0,
+        ),
+    )[0]
+
+
+def find_existing_topic_id_by_hotspots(cursor: Cursor, hotspot_ids: List[int]) -> Optional[int]:
+    """
+    只要这些 hotspot 中任意一个已经属于某个 topic，就复用该 topic。
+    如果多个 topic 命中，选择命中数量最多且最新更新的一个。
+    """
+    ids = [int(item) for item in hotspot_ids if item]
+    if not ids:
+        return None
+
+    placeholders = ",".join(["%s"] * len(ids))
+    sql = f"""
+        SELECT r.topic_id, COUNT(*) AS hit_count, MAX(t.updated_at) AS last_update_time
+        FROM cross_platform_topic_hotspot r
+        LEFT JOIN cross_platform_topic t ON t.id = r.topic_id
+        WHERE r.hotspot_id IN ({placeholders})
+        GROUP BY r.topic_id
+        ORDER BY hit_count DESC, last_update_time DESC, r.topic_id DESC
+        LIMIT 1
+    """
+    cursor.execute(sql, ids)
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return int(row.get("topic_id"))
+
+
+def calculate_topic_confidence(hotspots: List[Dict[str, Any]]) -> Optional[float]:
+    scores = []
+    for item in hotspots:
+        if item.get("similarity_score") is not None:
+            try:
+                scores.append(float(item.get("similarity_score")))
+            except Exception:
+                pass
+
+    if not scores:
+        return None
+
+    # 当前热点自身通常没有 similarity_score；这里只统计匹配项平均分。
+    return round(sum(scores) / len(scores), 2)
+
+
+def upsert_cross_platform_topic(
+    cursor: Cursor,
+    cross_result: Dict[str, Any],
+    summary: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> Optional[int]:
+    """
+    将一次跨平台匹配结果写入 cross_platform_topic / cross_platform_topic_hotspot。
+
+    这一步让“联合热点”从 related_hotspot_ids 字符串升级为独立业务对象：
+    - cross_platform_topic 保存联合事件本身；
+    - cross_platform_topic_hotspot 保存该事件关联了哪些平台热点。
+
+    返回 topic_id；如果同组不足 2 个平台，则不创建 topic。
+    """
+    now = now or datetime.now()
+    hotspots = collect_topic_hotspots(cross_result)
+
+    if not hotspots:
+        return None
+
+    platforms = sorted({item.get("platform") for item in hotspots if item.get("platform")})
+    if len(platforms) < 2:
+        return None
+
+    hotspot_ids = [int(item.get("id")) for item in hotspots if item.get("id")]
+    if len(hotspot_ids) < 2:
+        return None
+
+    primary = choose_topic_primary_hotspot(hotspots) or hotspots[0]
+    main_title = primary.get("title") or "跨平台热点"
+    related_platforms = ",".join(platforms)
+    confidence_score = calculate_topic_confidence(hotspots)
+
+    first_seen_candidates = [
+        item.get("crawl_time")
+        for item in hotspots
+        if item.get("crawl_time")
+    ]
+    first_seen_time = min(first_seen_candidates) if first_seen_candidates else now
+    last_seen_time = max(first_seen_candidates) if first_seen_candidates else now
+
+    topic_id = find_existing_topic_id_by_hotspots(cursor, hotspot_ids)
+
+    if topic_id is None:
+        insert_sql = """
+            INSERT INTO cross_platform_topic (
+                main_title,
+                summary,
+                topic_status,
+                confidence_score,
+                platform_count,
+                hotspot_count,
+                related_platforms,
+                first_seen_time,
+                last_seen_time,
+                created_at,
+                updated_at
+            ) VALUES (%s, %s, 'active', %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_sql, (
+            main_title,
+            summary,
+            confidence_score,
+            len(platforms),
+            len(hotspot_ids),
+            related_platforms,
+            first_seen_time,
+            last_seen_time,
+            now,
+            now,
+        ))
+        topic_id = int(cursor.lastrowid)
+    else:
+        update_sql = """
+            UPDATE cross_platform_topic
+            SET main_title = %s,
+                summary = CASE
+                    WHEN %s IS NULL OR %s = '' THEN summary
+                    ELSE %s
+                END,
+                confidence_score = COALESCE(%s, confidence_score),
+                platform_count = %s,
+                hotspot_count = %s,
+                related_platforms = %s,
+                first_seen_time = CASE
+                    WHEN first_seen_time IS NULL OR first_seen_time > %s THEN %s
+                    ELSE first_seen_time
+                END,
+                last_seen_time = CASE
+                    WHEN last_seen_time IS NULL OR last_seen_time < %s THEN %s
+                    ELSE last_seen_time
+                END,
+                updated_at = %s
+            WHERE id = %s
+        """
+        cursor.execute(update_sql, (
+            main_title,
+            summary,
+            summary,
+            summary,
+            confidence_score,
+            len(platforms),
+            len(hotspot_ids),
+            related_platforms,
+            first_seen_time,
+            first_seen_time,
+            last_seen_time,
+            last_seen_time,
+            now,
+            topic_id,
+        ))
+
+    primary_id = int(primary.get("id")) if primary.get("id") else None
+
+    relation_sql = """
+        INSERT INTO cross_platform_topic_hotspot (
+            topic_id,
+            hotspot_id,
+            platform,
+            title,
+            match_score,
+            is_primary,
+            created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            platform = VALUES(platform),
+            title = VALUES(title),
+            match_score = VALUES(match_score),
+            is_primary = VALUES(is_primary)
+    """
+
+    for item in hotspots:
+        hotspot_id = int(item.get("id"))
+        platform = item.get("platform") or ""
+        title = item.get("title") or ""
+        match_score = item.get("similarity_score")
+        if hotspot_id == primary_id and match_score is None:
+            match_score = 1.0
+        is_primary = 1 if hotspot_id == primary_id else 0
+
+        cursor.execute(relation_sql, (
+            topic_id,
+            hotspot_id,
+            platform,
+            title,
+            match_score,
+            is_primary,
+            now,
+        ))
+
+    # 兼容 topic 已存在但关联热点数量扩展的情况，最后再统计一次关系表。
+    refresh_sql = """
+        UPDATE cross_platform_topic t
+        SET platform_count = (
+                SELECT COUNT(DISTINCT r.platform)
+                FROM cross_platform_topic_hotspot r
+                WHERE r.topic_id = t.id
+            ),
+            hotspot_count = (
+                SELECT COUNT(*)
+                FROM cross_platform_topic_hotspot r
+                WHERE r.topic_id = t.id
+            ),
+            related_platforms = (
+                SELECT GROUP_CONCAT(DISTINCT r.platform ORDER BY r.platform SEPARATOR ',')
+                FROM cross_platform_topic_hotspot r
+                WHERE r.topic_id = t.id
+            ),
+            updated_at = %s
+        WHERE t.id = %s
+    """
+    cursor.execute(refresh_sql, (now, topic_id))
+
+    return topic_id
+
+
+def update_cross_platform_topic_summary(
+    cursor: Cursor,
+    cross_result: Dict[str, Any],
+    summary: str,
+    now: Optional[datetime] = None,
+) -> Optional[int]:
+    """
+    AI 生成跨平台简介后调用：把简介同步写入 cross_platform_topic.summary。
+    """
+    return upsert_cross_platform_topic(
+        cursor=cursor,
+        cross_result=cross_result,
+        summary=summary,
+        now=now or datetime.now(),
+    )
+
+
 def analyze_cross_platform_status(
     hotspot_id: int,
     lookback_hours: int = DEFAULT_LOOKBACK_HOURS,
@@ -975,6 +1279,11 @@ def analyze_cross_platform_status(
 
             material_bundle = build_cross_platform_material_bundle(cursor, related_result)
 
+            topic_id = None
+            if related_result.get("matches"):
+                topic_id = upsert_cross_platform_topic(cursor, related_result)
+                conn.commit()
+
             return {
                 "current": related_result.get("current"),
                 "matches": related_result.get("matches"),
@@ -982,6 +1291,7 @@ def analyze_cross_platform_status(
                 "platform_count": related_result.get("platform_count"),
                 "material_check": material_check,
                 "material_bundle": material_bundle,
+                "topic_id": topic_id,
             }
 
     finally:
@@ -1384,12 +1694,14 @@ def enqueue_group_material_and_ai_tasks(
         })
 
     material_bundle = build_cross_platform_material_bundle(cursor, related_result)
+    topic_id = upsert_cross_platform_topic(cursor, related_result)
 
     return {
         "related_result": related_result,
         "material_check": material_check,
         "material_bundle": material_bundle,
         "ai_actions": ai_actions,
+        "topic_id": topic_id,
     }
 
 

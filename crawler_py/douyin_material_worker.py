@@ -28,18 +28,21 @@ ENV_FILE = BASE_DIR / ".env"
 if load_dotenv:
     load_dotenv(ENV_FILE)
 
+from material_config import (
+    COMMENTS_PER_MATERIAL,
+    DOUYIN_COMMENT_FETCH_COUNT,
+    MATERIALS_PER_HOTSPOT,
+)
+
 
 DOUYIN_PLATFORM = "douyin"
 TASK_PENDING_STATUS = "pending_douyin"
 
-# 每个热点抓 3 条视频材料
-POSTS_PER_HOTSPOT = 3
-
-# 每条视频最终只保存点赞最多的 3 条评论
-COMMENTS_PER_VIDEO = 3
-
-# 每条视频先请求一批评论，再排序取前 3
-COMMENT_FETCH_COUNT = 30
+# 统一材料采集标准：每个热点最多保存 3 条主体材料，每条主体材料最多保存 5 条高赞评论。
+# 抖音仍会先抓一批候选评论，再按点赞数排序取前 5。
+POSTS_PER_HOTSPOT = MATERIALS_PER_HOTSPOT
+COMMENTS_PER_VIDEO = COMMENTS_PER_MATERIAL
+COMMENT_FETCH_COUNT = DOUYIN_COMMENT_FETCH_COUNT
 
 # 请求间隔，避免太激进
 REQUEST_SLEEP_SECONDS = 1.2
@@ -1115,7 +1118,7 @@ def run_douyin_material_worker(limit: int = 2) -> int:
     当前规则：
     - 每个热点抓 3 条视频材料；
     - 每条视频抓一批一级评论；
-    - 按点赞数取前 3 条评论入库；
+    - 按点赞数取前 5 条评论入库；
     - 评论抓取失败不影响视频材料任务完成。
     """
     conn = get_connection()

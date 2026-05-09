@@ -29,6 +29,8 @@ ENV_FILE = BASE_DIR / ".env"
 if load_dotenv:
     load_dotenv(ENV_FILE)
 
+from material_config import COMMENTS_PER_MATERIAL, MATERIALS_PER_HOTSPOT
+
 
 WEIBO_PLATFORM = "weibo"
 
@@ -37,11 +39,10 @@ TASK_PROCESSING_STATUS = "processing"
 TASK_DONE_STATUS = "done"
 TASK_FAILED_STATUS = "failed"
 
-# 每个热点最多抓 3 条相关微博内容
-POSTS_PER_HOTSPOT = 3
-
-# 每条微博最多保存 10 条高赞评论
-COMMENTS_PER_POST = 10
+# 统一材料采集标准：每个热点最多保存 3 条主体材料，每条主体材料最多保存 5 条高赞评论。
+# 如果实际返回不足 5 条，则按实际数量保存。
+POSTS_PER_HOTSPOT = MATERIALS_PER_HOTSPOT
+COMMENTS_PER_POST = COMMENTS_PER_MATERIAL
 
 # 评论接口最多翻几页。不要太大，避免请求过于激进
 COMMENT_MAX_PAGES = 2
