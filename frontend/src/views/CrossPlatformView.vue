@@ -27,7 +27,7 @@
           <div class="eyebrow">Cross-platform Hotspot Collection</div>
           <h1>跨平台热点合集</h1>
           <p>
-            基于 cross_platform_topic 与 cross_platform_topic_hotspot 表展示系统识别出的多平台共同热点，
+            按热点日期倒序展示系统识别出的多平台共同热点；同一天内按照关联平台热度总和从高到低排序，
             帮助观察同一事件在微博、抖音、B站中的传播情况。
           </p>
         </div>
@@ -115,6 +115,11 @@
                 </span>
               </div>
 
+              <div class="topic-meta-row">
+                <span>日期：{{ formatTopicDate(topic.topicDate) }}</span>
+                <span>综合热度：{{ formatHotValue(getTopicTotalHotValue(topic)) }}</span>
+              </div>
+
               <p class="group-summary">
                 {{ buildSummary(topic) }}
               </p>
@@ -136,6 +141,7 @@
             <div class="group-side">
               <div class="side-label">关联平台</div>
               <div class="side-value">{{ topic.platformCount || getTopicPlatforms(topic).length }}</div>
+              <div class="side-date">{{ formatTopicDate(topic.topicDate) }}</div>
               <button class="detail-button" @click.stop="goTopicDetail(topic)">
                 查看联合分析
               </button>
@@ -258,9 +264,37 @@ function getPlatformName(platform) {
 function formatHotValue(value) {
   const num = Number(value || 0)
   if (!num) return '—'
-  if (num >= 100000000) return `${(num / 100000000).toFixed(1)}亿`
-  if (num >= 10000) return `${(num / 10000).toFixed(1)}万`
+  if (num >= 100000000) return `${(num / 100000000).toFixed(1).replace(/\.0$/, '')}亿`
+  if (num >= 10000) return `${(num / 10000).toFixed(1).replace(/\.0$/, '')}万`
   return String(num)
+}
+
+function getTopicTotalHotValue(topic) {
+  const apiValue = Number(topic?.totalHotValue ?? topic?.total_hot_value ?? 0)
+  if (apiValue > 0) return apiValue
+
+  return (topic?.hotspots || []).reduce((sum, item) => {
+    return sum + (Number(item.hotValue ?? item.hot_value ?? 0) || 0)
+  }, 0)
+}
+
+function formatTopicDate(value) {
+  if (!value) return '未知日期'
+
+  const text = String(value).slice(0, 10)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+
+  const toDateText = (date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // 不再显示“今天/昨天”，统一显示具体日期，避免用户无法判断是哪一天的热点
+  return text
 }
 
 onMounted(reload)
@@ -612,6 +646,21 @@ onMounted(reload)
 .platform-badge.douyin { background: rgba(15, 23, 42, 0.1); color: #0f172a; }
 .platform-badge.bilibili { background: rgba(14, 165, 233, 0.12); color: #0284c7; }
 
+.topic-meta-row {
+  width: fit-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+  background: #f1f5f9;
+}
+
 .group-summary {
   margin: 12px 0 0;
   color: #64748b;
@@ -671,6 +720,12 @@ onMounted(reload)
   color: #0f172a;
   font-size: 28px;
   font-weight: 900;
+}
+
+.side-date {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .detail-button {

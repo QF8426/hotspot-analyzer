@@ -27,11 +27,11 @@ public class CrossPlatformTopicServiceImpl implements CrossPlatformTopicService 
     }
 
     @Override
-    public List<CrossPlatformTopicVO> getTopics(String platformCombo, Integer limit) {
+    public List<CrossPlatformTopicVO> getTopics(String platformCombo, Integer limit, Boolean todayOnly) {
         List<String> platforms = parsePlatformCombo(platformCombo);
         int safeLimit = normalizeLimit(limit);
 
-        List<CrossPlatformTopicVO> topics = crossPlatformTopicMapper.findTopics(platforms, safeLimit);
+        List<CrossPlatformTopicVO> topics = crossPlatformTopicMapper.findTopics(platforms, safeLimit, todayOnly);
         for (CrossPlatformTopicVO topic : topics) {
             List<CrossPlatformHotspotVO> hotspots = crossPlatformTopicMapper.findHotspotsByTopicId(topic.getId());
             topic.setHotspots(hotspots);

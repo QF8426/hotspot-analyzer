@@ -22,8 +22,9 @@ public class CrossPlatformTopicController {
     @GetMapping("/api/cross-platform/topics")
     public ApiResponse<List<CrossPlatformTopicVO>> getTopics(
             @RequestParam(required = false) String platformCombo,
-            @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(crossPlatformTopicService.getTopics(platformCombo, limit));
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Boolean todayOnly) {
+        return ApiResponse.success(crossPlatformTopicService.getTopics(platformCombo, limit, todayOnly));
     }
 
     @GetMapping("/api/cross-platform/topics/{id}")

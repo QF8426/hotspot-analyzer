@@ -117,7 +117,7 @@
           <div class="metric-main">
             <div class="metric-title">跨平台热点组</div>
             <div class="metric-value">{{ crossGroupCount }}</div>
-            <div class="metric-tip">基于标题相似度与平台关联估算</div>
+            <div class="metric-tip">来自跨平台主题表</div>
           </div>
           <svg class="mini-chart purple-line" viewBox="0 0 120 46" preserveAspectRatio="none">
             <polyline points="0,34 20,30 40,20 60,24 80,13 100,8 120,16" />
@@ -151,17 +151,17 @@
         <div class="section-header">
           <div>
             <h2><span>◆</span> 跨平台热点观察</h2>
-            <p>优先展示同时被多个平台关注的热点；暂无强匹配时展示三平台重点热点。</p>
+            <p>展示系统已识别并入库的跨平台联合热点主题，数据来源于 cross_platform_topic。</p>
           </div>
           <el-button type="primary" link @click="goCrossPlatform">查看更多</el-button>
         </div>
 
-        <div v-if="crossHotspots.length > 0" class="cross-grid">
+        <div v-if="crossHotspots.length > 0" v-loading="crossLoading" class="cross-grid">
           <article
             v-for="(item, index) in crossHotspots"
-            :key="`${item.title}-${index}`"
+            :key="item.topicId || item.id || index"
             class="cross-card"
-            @click="goDetail(item.id)"
+            @click="goCrossTopicDetail(item)"
           >
             <div class="cross-top">
               <span class="cross-rank">{{ index + 1 }}</span>
@@ -178,15 +178,19 @@
                 {{ getPlatformName(platform) }}
               </span>
             </div>
+            <div class="cross-meta-line">
+              <span>日期：{{ formatTopicDate(item.topicDate) }}</span>
+              <span>综合热度：{{ item.hotText }}</span>
+            </div>
             <p class="cross-summary">{{ item.summary }}</p>
             <div class="cross-footer">
-              <span>热度持续跟踪</span>
-              <span>讨论量 {{ item.hotText }}</span>
+              <span>按关联平台热度求和排序</span>
+              <span>关联平台 {{ item.platforms.length }} 个</span>
             </div>
           </article>
         </div>
 
-        <el-empty v-else description="暂无跨平台热点数据，等待调度器生成" />
+        <el-empty v-else description="暂无跨平台联合热点，请先运行跨平台扫描或查看合集页" />
       </section>
 
       <!-- 三平台 Top10 -->
@@ -262,7 +266,8 @@ import { ElMessage } from 'element-plus'
 import {
   getPlatformStats,
   getDailyTop,
-  getHotspotsByPlatform
+  getHotspotsByPlatform,
+  getCrossPlatformTopics
 } from '../api/hotspot'
 
 const router = useRouter()
@@ -328,65 +333,35 @@ const platformCount = computed(() => platforms.value.length)
 
 const allLoadedItems = computed(() => {
   const list = []
+  const seen = new Set()
+
   platforms.value.forEach(platform => {
-    ;(platform.dailyTop || []).forEach(item => list.push({ ...item, _platform: platform.key }))
-    ;(platform.currentList || []).forEach(item => list.push({ ...item, _platform: platform.key }))
+    const pushUnique = (item) => {
+      const id = getItemId(item, platform.key)
+      const title = cleanTitle(item?.title)
+      const key = id && !String(id).includes('-') ? `${platform.key}:${id}` : `${platform.key}:${title}`
+      if (!title || seen.has(key)) return
+      seen.add(key)
+      list.push({ ...item, _platform: platform.key })
+    }
+
+    ;(platform.dailyTop || []).forEach(pushUnique)
+    ;(platform.currentList || []).forEach(pushUnique)
   })
+
   return list
 })
 
-const crossGroups = computed(() => {
-  const map = new Map()
+const crossTopics = ref([])
+const crossLoading = ref(false)
 
-  allLoadedItems.value.forEach(item => {
-    const title = cleanTitle(item.title)
-    if (!title) return
-
-    const key = normalizeTitleForGroup(title)
-    if (!key) return
-
-    if (!map.has(key)) {
-      map.set(key, {
-        title,
-        items: [],
-        platforms: new Set(),
-        maxHotValue: 0
-      })
-    }
-
-    const group = map.get(key)
-    group.items.push(item)
-    group.platforms.add(item._platform)
-    group.maxHotValue = Math.max(group.maxHotValue, Number(getHotValue(item)) || 0)
-  })
-
-  return Array.from(map.values()).filter(group => group.platforms.size >= 2)
-})
-
-const crossGroupCount = computed(() => crossGroups.value.length)
+const crossGroupCount = computed(() => crossTopics.value.length)
 
 const crossHotspots = computed(() => {
-  const realGroups = crossGroups.value
-    .sort((a, b) => b.platforms.size - a.platforms.size || b.maxHotValue - a.maxHotValue)
+  return crossTopics.value
+    .filter(topic => (topic.platformCount || getTopicPlatforms(topic).length || 0) >= 2)
     .slice(0, 3)
-    .map(group => buildCrossCard(group))
-
-  if (realGroups.length >= 3) return realGroups
-
-  const usedIds = new Set(realGroups.map(item => item.id))
-  const fallback = allLoadedItems.value
-    .filter(item => !usedIds.has(getItemId(item)))
-    .sort((a, b) => (Number(getHotValue(b)) || 0) - (Number(getHotValue(a)) || 0))
-    .slice(0, 3 - realGroups.length)
-    .map(item => ({
-      id: getItemId(item),
-      title: cleanTitle(item.title),
-      platforms: [item._platform],
-      hotText: formatHotValue(getHotValue(item)),
-      summary: `该热点正在${getPlatformName(item._platform)}平台受到关注，系统已记录其榜单表现，可继续进入详情页查看趋势和 AI 简介。`
-    }))
-
-  return [...realGroups, ...fallback]
+    .map(topic => buildCrossTopicCard(topic))
 })
 
 const lastSyncText = computed(() => {
@@ -469,6 +444,14 @@ const goDetail = (id) => {
   router.push(`/detail/${id}`)
 }
 
+const goCrossTopicDetail = (item) => {
+  if (item?.id) {
+    goDetail(item.id)
+    return
+  }
+  goCrossPlatform()
+}
+
 const scrollToCrossHotspots = () => {
   document.querySelector('#cross-hotspots')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
@@ -501,14 +484,6 @@ const normalizeTag = (tag, title = '') => {
   return value || '无'
 }
 
-const normalizeTitleForGroup = (title) => {
-  return cleanTitle(title)
-    .toLowerCase()
-    .replace(/[\s#【】《》“”"'，。！？、：:；;,.!?\-_/|]/g, '')
-    .replace(/热搜|回应|官方|网友|最新/g, '')
-    .slice(0, 18)
-}
-
 const getHotValue = (item) => {
   return item?.maxHotValue ?? item?.hotValue ?? item?.hot_value ?? item?.max_hot_value
 }
@@ -529,6 +504,25 @@ const formatHotValue = (value) => {
     return (num / 10000).toFixed(1).replace(/\.0$/, '') + '万'
   }
   return String(num)
+}
+
+const formatTopicDate = (value) => {
+  if (!value) return '未知日期'
+
+  const text = String(value).slice(0, 10)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+
+  const toDateText = (date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // 不再显示“今天/昨天”，统一显示具体日期，避免用户无法判断是哪一天的热点
+  return text
 }
 
 const getPlatformName = (platformKey) => {
@@ -552,14 +546,64 @@ const getCategoryCount = (category) => {
   }).length
 }
 
-const buildCrossCard = (group) => {
-  const first = group.items[0]
+const getTopicPlatforms = (topic) => {
+  if (topic?.relatedPlatforms) {
+    return String(topic.relatedPlatforms)
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+  }
+
+  const set = new Set()
+  ;(topic?.hotspots || []).forEach(item => {
+    if (item.platform) set.add(item.platform)
+  })
+  return Array.from(set)
+}
+
+const getTopicPrimaryHotspot = (topic) => {
+  return (topic?.hotspots || []).find(item => item.primary || item.isPrimary) || (topic?.hotspots || [])[0] || null
+}
+
+const getTopicTotalHotValue = (topic) => {
+  const apiValue = Number(topic?.totalHotValue ?? topic?.total_hot_value ?? 0)
+  if (apiValue > 0) return apiValue
+
+  return (topic?.hotspots || []).reduce((sum, item) => {
+    return sum + (Number(item.hotValue ?? item.hot_value ?? 0) || 0)
+  }, 0)
+}
+
+const buildTopicSummary = (topic) => {
+  const text = String(topic?.summary || '').replace(/\s+/g, ' ').trim()
+  if (text) return text.length > 92 ? `${text.slice(0, 92)}...` : text
+
+  const platformsText = getTopicPlatforms(topic).map(getPlatformName).join('、')
+  return `该话题已被系统识别为${platformsText || '多个平台'}共同关注的联合热点，可进入详情页查看 AI 简介、趋势和来源材料。`
+}
+
+const buildCrossTopicCard = (topic) => {
+  const primary = getTopicPrimaryHotspot(topic)
+  const platforms = getTopicPlatforms(topic)
+
   return {
-    id: getItemId(first),
-    title: group.title,
-    platforms: Array.from(group.platforms),
-    hotText: formatHotValue(group.maxHotValue),
-    summary: `该话题在${Array.from(group.platforms).map(getPlatformName).join('、')}等平台同时出现，说明它已经具备跨平台传播特征，适合进一步查看联合分析和材料摘要。`
+    topicId: topic.id,
+    id: primary?.hotspotId,
+    title: topic.mainTitle || primary?.title || '跨平台热点',
+    platforms,
+    topicDate: topic.topicDate,
+    hotText: formatHotValue(getTopicTotalHotValue(topic)),
+    summary: buildTopicSummary(topic)
+  }
+}
+
+const loadCrossTopics = async () => {
+  crossLoading.value = true
+  try {
+    const result = await getCrossPlatformTopics({ limit: 3, todayOnly: true }).catch(() => [])
+    crossTopics.value = Array.isArray(result) ? result : []
+  } finally {
+    crossLoading.value = false
   }
 }
 
@@ -596,7 +640,10 @@ onMounted(async () => {
     platform.count = getStatCount(Array.isArray(statsList) ? statsList : [], platform.key)
   })
 
-  await Promise.all(platforms.value.map(platform => loadPlatformData(platform)))
+  await Promise.all([
+    Promise.all(platforms.value.map(platform => loadPlatformData(platform))),
+    loadCrossTopics()
+  ])
 })
 </script>
 
@@ -1254,6 +1301,19 @@ onMounted(async () => {
 .platform-badge.bilibili {
   color: #fb5ca8;
   background: #fff0f7;
+}
+
+.cross-meta-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0 8px;
+  padding: 7px 9px;
+  border-radius: 12px;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+  background: #f7f9ff;
 }
 
 .cross-summary {

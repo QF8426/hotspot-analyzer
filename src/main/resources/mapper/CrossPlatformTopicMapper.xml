@@ -7,48 +7,86 @@
 
     <select id="findTopics" resultType="com.example.hotspotanalyzer.vo.CrossPlatformTopicVO">
         SELECT
-            id,
-            main_title AS mainTitle,
-            summary,
-            topic_status AS topicStatus,
-            confidence_score AS confidenceScore,
-            platform_count AS platformCount,
-            hotspot_count AS hotspotCount,
-            related_platforms AS relatedPlatforms,
-            first_seen_time AS firstSeenTime,
-            last_seen_time AS lastSeenTime,
-            created_at AS createdAt,
-            updated_at AS updatedAt
-        FROM cross_platform_topic
-        WHERE topic_status = 'active'
+            t.id,
+            t.main_title AS mainTitle,
+            t.summary,
+            t.topic_status AS topicStatus,
+            t.confidence_score AS confidenceScore,
+            t.platform_count AS platformCount,
+            t.hotspot_count AS hotspotCount,
+            t.related_platforms AS relatedPlatforms,
+            DATE_FORMAT(COALESCE(t.last_seen_time, t.first_seen_time, t.created_at), '%Y-%m-%d') AS topicDate,
+            COALESCE(SUM(COALESCE(h.hot_value, 0)), 0) AS totalHotValue,
+            t.first_seen_time AS firstSeenTime,
+            t.last_seen_time AS lastSeenTime,
+            t.created_at AS createdAt,
+            t.updated_at AS updatedAt
+        FROM cross_platform_topic t
+        LEFT JOIN cross_platform_topic_hotspot th ON th.topic_id = t.id
+        LEFT JOIN hotspot h ON th.hotspot_id = h.id
+        WHERE t.topic_status = 'active'
         <if test="platforms != null and platforms.size() &gt; 0">
             <foreach collection="platforms" item="platform" separator="">
-                AND FIND_IN_SET(#{platform}, related_platforms)
+                AND FIND_IN_SET(#{platform}, t.related_platforms)
             </foreach>
         </if>
+        <if test="todayOnly != null and todayOnly">
+            AND DATE(COALESCE(t.last_seen_time, t.first_seen_time, t.created_at)) = CURDATE()
+        </if>
+        GROUP BY
+            t.id,
+            t.main_title,
+            t.summary,
+            t.topic_status,
+            t.confidence_score,
+            t.platform_count,
+            t.hotspot_count,
+            t.related_platforms,
+            t.first_seen_time,
+            t.last_seen_time,
+            t.created_at,
+            t.updated_at
         ORDER BY
-            platform_count DESC,
-            last_seen_time DESC,
-            id DESC
+            DATE(COALESCE(t.last_seen_time, t.first_seen_time, t.created_at)) DESC,
+            totalHotValue DESC,
+            t.last_seen_time DESC,
+            t.id DESC
         LIMIT #{limit}
     </select>
 
     <select id="findTopicById" resultType="com.example.hotspotanalyzer.vo.CrossPlatformTopicVO">
         SELECT
-            id,
-            main_title AS mainTitle,
-            summary,
-            topic_status AS topicStatus,
-            confidence_score AS confidenceScore,
-            platform_count AS platformCount,
-            hotspot_count AS hotspotCount,
-            related_platforms AS relatedPlatforms,
-            first_seen_time AS firstSeenTime,
-            last_seen_time AS lastSeenTime,
-            created_at AS createdAt,
-            updated_at AS updatedAt
-        FROM cross_platform_topic
-        WHERE id = #{id}
+            t.id,
+            t.main_title AS mainTitle,
+            t.summary,
+            t.topic_status AS topicStatus,
+            t.confidence_score AS confidenceScore,
+            t.platform_count AS platformCount,
+            t.hotspot_count AS hotspotCount,
+            t.related_platforms AS relatedPlatforms,
+            DATE_FORMAT(COALESCE(t.last_seen_time, t.first_seen_time, t.created_at), '%Y-%m-%d') AS topicDate,
+            COALESCE(SUM(COALESCE(h.hot_value, 0)), 0) AS totalHotValue,
+            t.first_seen_time AS firstSeenTime,
+            t.last_seen_time AS lastSeenTime,
+            t.created_at AS createdAt,
+            t.updated_at AS updatedAt
+        FROM cross_platform_topic t
+        LEFT JOIN cross_platform_topic_hotspot th ON th.topic_id = t.id
+        LEFT JOIN hotspot h ON th.hotspot_id = h.id
+        WHERE t.id = #{id}
+        GROUP BY
+            t.id,
+            t.main_title,
+            t.summary,
+            t.topic_status,
+            t.confidence_score,
+            t.platform_count,
+            t.hotspot_count,
+            t.related_platforms,
+            t.first_seen_time,
+            t.last_seen_time,
+            t.created_at,
+            t.updated_at
         LIMIT 1
     </select>
 

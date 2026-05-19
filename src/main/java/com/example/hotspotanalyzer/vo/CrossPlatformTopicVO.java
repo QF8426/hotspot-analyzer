@@ -17,6 +17,8 @@ public class CrossPlatformTopicVO {
     private Integer platformCount;
     private Integer hotspotCount;
     private String relatedPlatforms;
+    private String topicDate;
+    private Double totalHotValue;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime firstSeenTime;

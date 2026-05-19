@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface CrossPlatformTopicService {
 
-    List<CrossPlatformTopicVO> getTopics(String platformCombo, Integer limit);
+    List<CrossPlatformTopicVO> getTopics(String platformCombo, Integer limit, Boolean todayOnly);
 
     CrossPlatformTopicVO getTopicById(Long id);
 }

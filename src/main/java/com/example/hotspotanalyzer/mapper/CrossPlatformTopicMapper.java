@@ -11,7 +11,8 @@ import java.util.List;
 public interface CrossPlatformTopicMapper {
 
     List<CrossPlatformTopicVO> findTopics(@Param("platforms") List<String> platforms,
-                                          @Param("limit") Integer limit);
+                                          @Param("limit") Integer limit,
+                                          @Param("todayOnly") Boolean todayOnly);
 
     CrossPlatformTopicVO findTopicById(@Param("id") Long id);
 
