@@ -1,167 +1,187 @@
 <template>
-  <div class="cross-page-shell">
-    <header class="top-bar">
-      <div class="brand" @click="goHome">
-        <div class="brand-logo">↗</div>
-        <div>
-          <div class="brand-title">跨平台热点聚合分析器</div>
-          <div class="brand-subtitle">Weibo · Douyin · Bilibili Intelligence</div>
+  <div class="app-container page-stack">
+    <section class="page-hero">
+      <span class="page-hero__eyebrow">Cross-Platform Intelligence</span>
+      <h1 class="page-hero__title">跨平台热点合集</h1>
+      <p class="page-hero__subtitle">
+        展示系统识别出的多平台共同热点主题，重点体现微博、抖音、B站之间的话题联动情况，并为毕业设计答辩提供可直接演示的主题汇总视图。
+      </p>
+
+      <div class="cross-hero__metrics">
+        <div class="cross-hero__metric">
+          <span>全部主题数</span>
+          <strong>{{ topics.length }}</strong>
+        </div>
+        <div class="cross-hero__metric">
+          <span>筛选后主题数</span>
+          <strong>{{ filteredTopics.length }}</strong>
+        </div>
+        <div class="cross-hero__metric">
+          <span>三平台共同主题</span>
+          <strong>{{ threePlatformCount }}</strong>
+        </div>
+        <div class="cross-hero__metric">
+          <span>含 AI 简介主题</span>
+          <strong>{{ summaryCount }}</strong>
         </div>
       </div>
+    </section>
 
-      <nav class="nav-tabs">
-        <button class="nav-tab" @click="goHome">首页</button>
-        <button class="nav-tab active" @click="reload">跨平台热点</button>
-        <button class="nav-tab" @click="goHistory">历史榜单</button>
-      </nav>
-
-      <div class="sync-status">
-        <span class="status-dot"></span>
-        <span>已接入联合热点主题表</span>
-      </div>
-    </header>
-
-    <main class="cross-page">
-      <section class="page-hero">
-        <div>
-          <div class="eyebrow">Cross-platform Hotspot Collection</div>
-          <h1>跨平台热点合集</h1>
-          <p>
-            按热点日期倒序展示系统识别出的多平台共同热点；同一天内按照关联平台热度总和从高到低排序，
-            帮助观察同一事件在微博、抖音、B站中的传播情况。
-          </p>
-        </div>
-        <div class="hero-stat-card">
-          <div class="hero-stat-label">当前热点组</div>
-          <div class="hero-stat-value">{{ topics.length }}</div>
-          <div class="hero-stat-tip">来自后端联合热点接口</div>
-        </div>
-      </section>
-
-      <section class="filter-card">
-        <div class="filter-left">
-          <span class="filter-title">平台组合</span>
-          <div class="filter-tabs">
-            <button
-              v-for="option in filterOptions"
-              :key="option.key"
-              class="filter-tab"
-              :class="{ active: activeFilter === option.key }"
-              @click="changeFilter(option.key)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-        </div>
-
-        <div class="filter-right">
-          <span class="filter-title">显示数量</span>
-          <select v-model.number="limit" class="sort-select" @change="reload">
-            <option :value="30">30 组</option>
-            <option :value="50">50 组</option>
-            <option :value="100">100 组</option>
-          </select>
-        </div>
-      </section>
-
-      <section class="summary-row">
-        <article class="summary-card">
-          <span class="summary-icon blue">▥</span>
-          <div>
-            <div class="summary-label">联合热点组</div>
-            <div class="summary-value">{{ topics.length }}</div>
-          </div>
-        </article>
-        <article class="summary-card">
-          <span class="summary-icon purple">✣</span>
-          <div>
-            <div class="summary-label">三平台共同</div>
-            <div class="summary-value">{{ threePlatformCount }}</div>
-          </div>
-        </article>
-        <article class="summary-card">
-          <span class="summary-icon orange">🔥</span>
-          <div>
-            <div class="summary-label">最高关联平台数</div>
-            <div class="summary-value">{{ maxPlatformCount }}</div>
-          </div>
-        </article>
-      </section>
-
-      <section v-loading="loading" class="group-list">
-        <template v-if="topics.length > 0">
-          <article
-            v-for="(topic, index) in topics"
-            :key="topic.id"
-            class="group-card"
-            @click="goTopicDetail(topic)"
+    <section class="page-card page-card--strong cross-toolbar">
+      <div class="control-bar">
+        <div class="chip-group">
+          <button
+            v-for="option in filterOptions"
+            :key="option.key"
+            type="button"
+            class="chip-button"
+            :class="{ active: activeFilter === option.key }"
+            @click="activeFilter = option.key"
           >
-            <div class="group-rank">{{ index + 1 }}</div>
+            {{ option.label }}
+          </button>
+        </div>
 
-            <div class="group-main">
-              <div class="group-head">
-                <h2>{{ cleanTitle(topic.mainTitle) }}</h2>
-                <span class="analysis-tag">跨平台分析</span>
+        <div class="cross-toolbar__actions">
+          <el-select v-model="limit" placeholder="主题数量" @change="loadTopics">
+            <el-option :value="30" label="最近 30 条" />
+            <el-option :value="60" label="最近 60 条" />
+            <el-option :value="100" label="最近 100 条" />
+          </el-select>
+          <el-button type="primary" @click="loadTopics">刷新主题</el-button>
+        </div>
+      </div>
+    </section>
+
+    <RequestState
+      :loading="loading"
+      :error="error"
+      :empty="!loading && !error && filteredTopics.length === 0"
+      empty-description="当前条件下暂无可展示的跨平台热点主题"
+      @retry="loadTopics"
+    >
+      <section class="cross-topic-grid">
+        <article
+          v-for="topic in filteredTopics"
+          :key="topic.id || topic.mainTitle"
+          class="table-card cross-topic-card"
+        >
+          <div class="cross-topic-card__head">
+            <div>
+              <div class="cross-topic-card__badges">
+                <el-tag type="primary" effect="plain">跨平台主题</el-tag>
+                <el-tag effect="plain">{{ formatTopicDate(topic.topicDate) }}</el-tag>
               </div>
+              <h2 class="cross-topic-card__title">{{ cleanTitle(topic.mainTitle) || '未命名主题' }}</h2>
+            </div>
 
-              <div class="platform-badges">
-                <span
-                  v-for="platform in getTopicPlatforms(topic)"
-                  :key="platform"
-                  class="platform-badge"
-                  :class="platform"
-                >
-                  {{ getPlatformName(platform) }}
-                </span>
+            <div class="cross-topic-card__cta">
+              <el-button
+                v-if="topic.id"
+                type="primary"
+                @click="goTopicDetail(topic)"
+              >
+                查看主题分析
+              </el-button>
+              <el-button
+                v-else-if="getTopicPrimaryHotspot(topic)"
+                type="primary"
+                @click="goPrimaryHotspot(topic)"
+              >
+                查看相关热点详情
+              </el-button>
+            </div>
+          </div>
+
+          <div class="cross-topic-card__platforms">
+            <PlatformPill
+              v-for="platform in getTopicPlatforms(topic)"
+              :key="`${topic.id || topic.mainTitle}-${platform}`"
+              :platform="platform"
+            />
+          </div>
+
+          <p class="cross-topic-card__summary">
+            {{ buildSummaryText(topic.summary, fallbackSummary(topic), 168) }}
+          </p>
+
+          <div class="cross-topic-card__metrics">
+            <div class="cross-topic-card__metric">
+              <span>关联平台数</span>
+              <strong>{{ getTopicPlatforms(topic).length }}</strong>
+            </div>
+            <div class="cross-topic-card__metric">
+              <span>关联热点数</span>
+              <strong>{{ topic.hotspotCount || topic.hotspots?.length || 0 }}</strong>
+            </div>
+            <div class="cross-topic-card__metric">
+              <span>综合指标</span>
+              <strong>{{ formatHotValue(getTopicTotalHotValue(topic)) }}</strong>
+            </div>
+          </div>
+
+          <div class="soft-divider"></div>
+
+          <div class="cross-topic-card__related">
+            <div class="section-head cross-topic-card__related-head">
+              <div>
+                <h3>主要关联热点</h3>
+                <p>展示该主题下最主要的关联热点，支持继续进入单热点详情页。</p>
               </div>
+            </div>
 
-              <div class="topic-meta-row">
-                <span>日期：{{ formatTopicDate(topic.topicDate) }}</span>
-                <span>综合热度：{{ formatHotValue(getTopicTotalHotValue(topic)) }}</span>
-              </div>
-
-              <p class="group-summary">
-                {{ buildSummary(topic) }}
-              </p>
-
-              <div class="source-list">
-                <div
-                  v-for="item in (topic.hotspots || []).slice(0, 3)"
-                  :key="`${topic.id}-${item.hotspotId}`"
-                  class="source-item"
-                  @click.stop="goDetail(item.hotspotId)"
-                >
-                  <span class="source-platform">{{ getPlatformName(item.platform) }}</span>
-                  <span class="source-title">{{ cleanTitle(item.title) }}</span>
-                  <span class="source-heat">{{ formatHotValue(item.hotValue) }}</span>
+            <div class="cross-topic-card__related-list">
+              <article
+                v-for="item in (topic.hotspots || []).slice(0, 4)"
+                :key="`${topic.id || topic.mainTitle}-${getHotspotId(item)}`"
+                class="cross-related-item"
+                @click="goDetail(getHotspotId(item))"
+              >
+                <div class="cross-related-item__main">
+                  <div class="cross-related-item__title-row">
+                    <PlatformPill :platform="item.platform" />
+                    <h4>{{ cleanTitle(item.title) || `热点 ${getHotspotId(item)}` }}</h4>
+                    <el-tag v-if="item.primary || item.isPrimary" type="warning" size="small">主热点</el-tag>
+                  </div>
+                  <div class="cross-related-item__meta">
+                    <span>排名：{{ item.rankNum ?? '暂无' }}</span>
+                    <span>{{ getPlatformHeatLabel(item.platform) }}：{{ formatHotValue(getHotValue(item), item.platform) }}</span>
+                  </div>
                 </div>
-              </div>
-            </div>
+                <el-button type="primary" plain @click.stop="goDetail(getHotspotId(item))">查看详情</el-button>
+              </article>
 
-            <div class="group-side">
-              <div class="side-label">关联平台</div>
-              <div class="side-value">{{ topic.platformCount || getTopicPlatforms(topic).length }}</div>
-              <div class="side-date">{{ formatTopicDate(topic.topicDate) }}</div>
-              <button class="detail-button" @click.stop="goTopicDetail(topic)">
-                查看联合分析
-              </button>
+              <el-empty
+                v-if="!(topic.hotspots || []).length"
+                description="接口暂未返回关联热点明细，仍可通过主题入口查看聚合信息"
+              />
             </div>
-          </article>
-        </template>
-
-        <el-empty
-          v-else
-          description="暂无跨平台热点数据，请先运行跨平台扫描和 AI worker"
-        />
+          </div>
+        </article>
       </section>
-    </main>
+    </RequestState>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import PlatformPill from '../components/PlatformPill.vue'
+import RequestState from '../components/RequestState.vue'
 import { getCrossPlatformTopics } from '../api/hotspot'
+import {
+  buildSummaryText,
+  cleanTitle,
+  formatDate,
+  formatHotValue,
+  getHotValue,
+  getHotspotId,
+  getPlatformHeatLabel,
+  getPlatformLabel,
+  getTopicPlatforms,
+  getTopicPrimaryHotspot,
+  getTopicTotalHotValue
+} from '../utils/hotspot'
 
 const router = useRouter()
 
@@ -173,590 +193,287 @@ const filterOptions = [
   { key: 'three', label: '三平台共同' }
 ]
 
-const topics = ref([])
 const loading = ref(false)
+const error = ref('')
+const limit = ref(60)
 const activeFilter = ref('all')
-const limit = ref(50)
+const topics = ref([])
 
-const threePlatformCount = computed(() =>
-  topics.value.filter(topic => (topic.platformCount || getTopicPlatforms(topic).length) >= 3).length
-)
+const filteredTopics = computed(() => {
+  if (activeFilter.value === 'all') return topics.value
 
-const maxPlatformCount = computed(() => {
-  if (!topics.value.length) return 0
-  return Math.max(...topics.value.map(topic => topic.platformCount || getTopicPlatforms(topic).length || 0))
+  return topics.value.filter(topic => {
+    const platforms = getTopicPlatforms(topic)
+
+    if (activeFilter.value === 'three') {
+      return platforms.length >= 3
+    }
+
+    const expected = activeFilter.value.split(',')
+    return expected.every(platform => platforms.includes(platform)) && platforms.length === expected.length
+  })
 })
 
-async function reload() {
+const threePlatformCount = computed(
+  () => topics.value.filter(topic => getTopicPlatforms(topic).length >= 3).length
+)
+
+const summaryCount = computed(
+  () => topics.value.filter(topic => String(topic?.summary || '').trim()).length
+)
+
+async function loadTopics() {
   loading.value = true
+  error.value = ''
+
   try {
-    const params = { limit: limit.value }
-    if (activeFilter.value !== 'all') {
-      params.platformCombo = activeFilter.value
-    }
-    topics.value = await getCrossPlatformTopics(params)
+    const result = await getCrossPlatformTopics({ limit: limit.value })
+    topics.value = Array.isArray(result) ? result : []
+  } catch (requestError) {
+    error.value = requestError?.message || '跨平台主题加载失败，请稍后重试'
+    topics.value = []
   } finally {
     loading.value = false
   }
 }
 
-function changeFilter(key) {
-  activeFilter.value = key
-  reload()
+function fallbackSummary(topic) {
+  const platforms = getTopicPlatforms(topic).map(getPlatformLabel).join('、') || '多个平台'
+  return `该主题由系统自动聚合而成，当前已覆盖${platforms}的共同热点，适合作为跨平台传播对比和答辩展示时的主题入口。`
 }
 
-function getTopicPlatforms(topic) {
-  if (topic.relatedPlatforms) {
-    return topic.relatedPlatforms
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean)
-  }
-
-  const set = new Set()
-  ;(topic.hotspots || []).forEach(item => {
-    if (item.platform) set.add(item.platform)
-  })
-  return Array.from(set)
-}
-
-function buildSummary(topic) {
-  const text = (topic.summary || '').replace(/\s+/g, ' ').trim()
-  if (text) return text.length > 150 ? `${text.slice(0, 150)}...` : text
-
-  const platforms = getTopicPlatforms(topic).map(getPlatformName).join('、')
-  return `该热点被识别为跨平台共同话题，已关联 ${platforms || '多个平台'} 的相关热点。系统后续可继续补充联合简介和平台差异分析。`
-}
-
-function goTopicDetail(topic) {
-  const primary = (topic.hotspots || []).find(item => item.primary) || (topic.hotspots || [])[0]
-  if (primary?.hotspotId) {
-    router.push(`/detail/${primary.hotspotId}`)
-  }
+function formatTopicDate(value) {
+  return value ? formatDate(value) : '日期未标注'
 }
 
 function goDetail(id) {
   if (!id) return
-  router.push(`/detail/${id}`)
+  router.push({ name: 'detail', params: { id } })
 }
 
-function goHome() {
-  router.push('/')
-}
-
-function goHistory() {
-  router.push('/platform/weibo?mode=history')
-}
-
-function cleanTitle(title) {
-  return String(title || '').replace(/^#+|#+$/g, '')
-}
-
-function getPlatformName(platform) {
-  const map = {
-    weibo: '微博',
-    douyin: '抖音',
-    bilibili: 'B站'
+function goTopicDetail(topic) {
+  if (topic?.id) {
+    router.push({ name: 'crossPlatformTopic', params: { id: topic.id } })
+    return
   }
-  return map[platform] || platform || '未知平台'
+  goPrimaryHotspot(topic)
 }
 
-function formatHotValue(value) {
-  const num = Number(value || 0)
-  if (!num) return '—'
-  if (num >= 100000000) return `${(num / 100000000).toFixed(1).replace(/\.0$/, '')}亿`
-  if (num >= 10000) return `${(num / 10000).toFixed(1).replace(/\.0$/, '')}万`
-  return String(num)
-}
-
-function getTopicTotalHotValue(topic) {
-  const apiValue = Number(topic?.totalHotValue ?? topic?.total_hot_value ?? 0)
-  if (apiValue > 0) return apiValue
-
-  return (topic?.hotspots || []).reduce((sum, item) => {
-    return sum + (Number(item.hotValue ?? item.hot_value ?? 0) || 0)
-  }, 0)
-}
-
-function formatTopicDate(value) {
-  if (!value) return '未知日期'
-
-  const text = String(value).slice(0, 10)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-
-  const toDateText = (date) => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+function goPrimaryHotspot(topic) {
+  const primary = getTopicPrimaryHotspot(topic)
+  if (primary) {
+    goDetail(getHotspotId(primary))
   }
-
-  // 不再显示“今天/昨天”，统一显示具体日期，避免用户无法判断是哪一天的热点
-  return text
 }
 
-onMounted(reload)
+onMounted(loadTopics)
 </script>
 
 <style scoped>
-.cross-page-shell {
-  min-height: 100vh;
-  background: linear-gradient(180deg, #f7f9ff 0%, #eef3ff 42%, #f8fafc 100%);
-  color: #18233f;
-}
-
-.top-bar {
-  height: 64px;
-  padding: 0 42px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(255, 255, 255, 0.86);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  backdrop-filter: blur(18px);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-}
-
-.brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 900;
-  background: linear-gradient(135deg, #3b82f6, #7c3aed);
-  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.24);
-}
-
-.brand-title {
-  font-size: 17px;
-  font-weight: 800;
-}
-
-.brand-subtitle {
-  margin-top: 2px;
-  color: #94a3b8;
-  font-size: 11px;
-}
-
-.nav-tabs {
-  display: flex;
-  gap: 10px;
-  padding: 5px;
-  border-radius: 999px;
-  background: rgba(241, 245, 249, 0.92);
-}
-
-.nav-tab {
-  border: 0;
-  padding: 9px 16px;
-  border-radius: 999px;
-  background: transparent;
-  color: #64748b;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.nav-tab.active {
-  color: #fff;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
-}
-
-.sync-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #475569;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.12);
-}
-
-.cross-page {
-  width: min(1240px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 24px 0 50px;
-}
-
-.page-hero {
-  min-height: 150px;
-  padding: 26px 30px;
-  border-radius: 28px;
-  display: flex;
-  justify-content: space-between;
-  gap: 28px;
-  background:
-    radial-gradient(circle at 85% 20%, rgba(124, 58, 237, 0.16), transparent 28%),
-    linear-gradient(135deg, #ffffff 0%, #eef5ff 100%);
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-}
-
-.eyebrow {
-  color: #2563eb;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.page-hero h1 {
-  margin: 10px 0 8px;
-  font-size: 36px;
-  line-height: 1.15;
-  letter-spacing: -0.04em;
-}
-
-.page-hero p {
-  width: min(680px, 100%);
-  margin: 0;
-  color: #64748b;
-  line-height: 1.7;
-  font-size: 15px;
-}
-
-.hero-stat-card {
-  min-width: 190px;
-  padding: 22px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-}
-
-.hero-stat-label,
-.summary-label,
-.side-label {
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.hero-stat-value {
-  margin-top: 8px;
-  font-size: 38px;
-  font-weight: 900;
-  color: #2563eb;
-}
-
-.hero-stat-tip {
-  margin-top: 4px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.filter-card,
-.summary-row,
-.group-card {
-  margin-top: 18px;
-}
-
-.filter-card {
-  padding: 16px 18px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
-}
-
-.filter-left,
-.filter-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.filter-title {
-  white-space: nowrap;
-  color: #475569;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.filter-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.filter-tab {
-  border: 0;
-  padding: 8px 13px;
-  border-radius: 999px;
-  color: #64748b;
-  background: #f1f5f9;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.filter-tab.active {
-  color: #fff;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-}
-
-.sort-select {
-  height: 34px;
-  border-radius: 999px;
-  padding: 0 12px;
-  border: 1px solid #dbe4f0;
-  color: #475569;
-  font-weight: 700;
-  outline: none;
-  background: #fff;
-}
-
-.summary-row {
+.cross-hero__metrics {
+  margin-top: 24px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.summary-card {
-  min-height: 82px;
-  padding: 18px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
-  display: flex;
-  align-items: center;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
-.summary-icon {
-  width: 42px;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 15px;
-  font-size: 18px;
+.cross-hero__metric {
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(135, 160, 206, 0.18);
 }
 
-.summary-icon.blue { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
-.summary-icon.purple { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
-.summary-icon.orange { background: rgba(245, 158, 11, 0.14); color: #d97706; }
+.cross-hero__metric span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
 
-.summary-value {
-  margin-top: 4px;
-  color: #0f172a;
+.cross-hero__metric strong {
+  display: block;
+  margin-top: 10px;
   font-size: 24px;
-  font-weight: 900;
+  line-height: 1.2;
 }
 
-.group-list {
-  margin-top: 8px;
+.cross-toolbar {
+  padding: 20px 24px;
 }
 
-.group-card {
-  position: relative;
-  padding: 22px;
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
-  display: grid;
-  grid-template-columns: 48px 1fr 160px;
-  gap: 18px;
-  cursor: pointer;
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
-}
-
-.group-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 24px 54px rgba(37, 99, 235, 0.12);
-}
-
-.group-rank {
-  width: 42px;
-  height: 42px;
-  border-radius: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 18px;
-  font-weight: 900;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-}
-
-.group-head {
+.cross-toolbar__actions {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.group-head h2 {
-  margin: 0;
-  font-size: 20px;
-  color: #0f172a;
-}
-
-.analysis-tag {
-  padding: 5px 9px;
-  border-radius: 999px;
-  color: #6d28d9;
-  background: rgba(124, 58, 237, 0.1);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.platform-badges {
-  margin-top: 10px;
-  display: flex;
   flex-wrap: wrap;
-  gap: 8px;
 }
 
-.platform-badge {
-  padding: 5px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-  background: #f1f5f9;
-  color: #475569;
-}
-
-.platform-badge.weibo { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
-.platform-badge.douyin { background: rgba(15, 23, 42, 0.1); color: #0f172a; }
-.platform-badge.bilibili { background: rgba(14, 165, 233, 0.12); color: #0284c7; }
-
-.topic-meta-row {
-  width: fit-content;
-  max-width: 100%;
-  display: inline-flex;
-  align-items: center;
+.cross-topic-grid {
+  display: grid;
   gap: 16px;
-  margin-top: 12px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  color: #475569;
-  font-size: 13px;
-  font-weight: 800;
-  background: #f1f5f9;
 }
 
-.group-summary {
-  margin: 12px 0 0;
-  color: #64748b;
-  line-height: 1.7;
-  font-size: 14px;
-}
-
-.source-list {
-  margin-top: 14px;
+.cross-topic-card {
   display: grid;
-  gap: 8px;
+  gap: 18px;
 }
 
-.source-item {
-  min-width: 0;
-  padding: 9px 10px;
-  border-radius: 14px;
-  display: grid;
-  grid-template-columns: 62px 1fr 88px;
-  gap: 8px;
+.cross-topic-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cross-topic-card__badges {
+  display: flex;
   align-items: center;
-  background: #f8fafc;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.source-platform {
-  font-size: 12px;
-  font-weight: 900;
-  color: #2563eb;
+.cross-topic-card__title {
+  margin: 14px 0 0;
+  font-size: 26px;
+  line-height: 1.3;
 }
 
-.source-title {
-  min-width: 0;
-  color: #334155;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.cross-topic-card__cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.source-heat {
-  text-align: right;
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 800;
+.cross-topic-card__platforms {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.group-side {
-  border-left: 1px solid rgba(148, 163, 184, 0.16);
-  padding-left: 18px;
+.cross-topic-card__summary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.cross-topic-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cross-topic-card__metric {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(245, 249, 255, 0.82);
+  border: 1px solid rgba(135, 160, 206, 0.16);
+}
+
+.cross-topic-card__metric span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cross-topic-card__metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.cross-topic-card__related-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.cross-topic-card__related-head p {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.cross-topic-card__related-list {
+  margin-top: 14px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
   gap: 12px;
 }
 
-.side-value {
-  color: #0f172a;
-  font-size: 28px;
-  font-weight: 900;
-}
-
-.side-date {
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.detail-button {
-  border: 0;
-  padding: 9px 14px;
-  border-radius: 999px;
-  color: #fff;
-  font-weight: 800;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
+.cross-related-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(245, 249, 255, 0.82);
+  border: 1px solid rgba(135, 160, 206, 0.16);
   cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-@media (max-width: 980px) {
-  .top-bar,
-  .filter-card,
-  .page-hero {
+.cross-related-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+  border-color: rgba(47, 107, 255, 0.2);
+}
+
+.cross-related-item__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.cross-related-item__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cross-related-item__title-row h4 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.cross-related-item__meta {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 1080px) {
+  .cross-hero__metrics,
+  .cross-topic-card__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cross-topic-card__head {
     flex-direction: column;
-    height: auto;
+  }
+}
+
+@media (max-width: 860px) {
+  .cross-related-item {
+    flex-direction: column;
     align-items: flex-start;
   }
+}
 
-  .summary-row,
-  .group-card {
+@media (max-width: 640px) {
+  .cross-hero__metrics,
+  .cross-topic-card__metrics {
     grid-template-columns: 1fr;
-  }
-
-  .group-side {
-    border-left: 0;
-    border-top: 1px solid rgba(148, 163, 184, 0.16);
-    padding-left: 0;
-    padding-top: 14px;
   }
 }
 </style>

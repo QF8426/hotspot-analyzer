@@ -2,17 +2,24 @@ import axios from 'axios'
 
 const request = axios.create({
   baseURL: '',
-  timeout: 5000
+  timeout: 10000
 })
 
 request.interceptors.response.use(
-  (response) => {
-    console.log('接口原始返回：', response.data)
-    return response.data.data
+  response => {
+    const payload = response?.data
+    if (payload && Object.prototype.hasOwnProperty.call(payload, 'data')) {
+      return payload.data
+    }
+    return payload
   },
-  (error) => {
-    console.error('请求失败：', error)
-    return Promise.reject(error)
+  error => {
+    const message =
+      error?.response?.data?.message ||
+      error?.response?.data?.msg ||
+      error?.message ||
+      '请求失败'
+    return Promise.reject(new Error(message))
   }
 )
 

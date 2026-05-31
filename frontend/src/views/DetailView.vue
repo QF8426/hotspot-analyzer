@@ -1,450 +1,342 @@
 <template>
-  <div class="detail-page">
-    <div class="top-bar">
-      <el-button type="primary" plain @click="goBack">返回</el-button>
-    </div>
-
-    <div v-if="detail" class="detail-content">
-      <div class="title-block">
-        <h1>{{ cleanTitle(detail.title) }}</h1>
-
-        <div class="meta">
-          <el-tag v-if="detail.isSpecial" type="danger">置顶</el-tag>
-          <el-tag>{{ platformName }}</el-tag>
-          <span>热度：{{ formatHotValue(detail.hotValue) }}</span>
-          <span v-if="detail.rankNum !== null && detail.rankNum !== undefined">
-            当前平台内排名：#{{ detail.rankNum }}
-          </span>
-          <span v-if="detail.tags">标签：{{ detail.tags }}</span>
-        </div>
+  <div class="app-container page-stack">
+    <section class="page-card page-card--strong detail-toolbar">
+      <div class="detail-toolbar__inner">
+        <el-button type="primary" plain @click="goBack">返回上一页</el-button>
+        <span class="detail-toolbar__tip">热点详情页聚焦标题、AI 简介、趋势变化与跨平台关联</span>
       </div>
+    </section>
 
-      <el-card class="summary-card" shadow="never">
-        <template #header>
-          <div class="summary-header">
-            <span>热点简介</span>
-
-            <div class="summary-tags">
-              <el-tag
-                v-if="hasAiSummary && isCrossPlatformSummary"
-                type="warning"
-                size="small"
-              >
-                跨平台分析
-              </el-tag>
-
-              <el-tag
-                v-else-if="hasAiSummary"
-                type="success"
-                size="small"
-              >
-                AI生成
-              </el-tag>
-
-              <el-tag
-                v-else
-                type="info"
-                size="small"
-              >
-                系统提示
-              </el-tag>
+    <RequestState
+      :loading="loading"
+      :error="error"
+      :empty="!loading && !error && !detail"
+      empty-description="未找到对应的热点详情"
+      @retry="loadPage"
+    >
+      <section v-if="detail" class="page-hero detail-hero">
+        <div class="detail-hero__main">
+          <div class="detail-hero__badges">
+            <PlatformPill :platform="detail.platform" />
+            <div v-if="isCrossPlatform" class="detail-analysis-flag">
+              <strong>跨平台分析</strong>
+              <span>已纳入共同话题识别</span>
             </div>
-          </div>
-        </template>
-
-        <div
-          v-if="isCrossPlatformSummary && relatedPlatformList.length"
-          class="cross-platform-info"
-        >
-          <div class="cross-platform-row">
-            <span class="cross-platform-label">关联平台：</span>
-            <el-tag
-              v-for="platform in relatedPlatformList"
-              :key="platform"
-              size="small"
-              type="info"
-              effect="plain"
-            >
-              {{ getPlatformLabel(platform) }}
-            </el-tag>
+            <el-tag v-if="detail.isSpecial" type="warning" effect="plain">平台特殊项</el-tag>
           </div>
 
-          <div
-            v-if="otherRelatedHotspotIdList.length"
-            class="cross-platform-row related-hotspot-row"
-          >
-            <span class="cross-platform-label">关联热点：</span>
+          <h1 class="page-hero__title detail-hero__title">{{ cleanTitle(detail.title) || '未命名热点' }}</h1>
+          <p class="page-hero__subtitle detail-hero__subtitle">{{ heroDescription }}</p>
 
-            <span v-if="relatedLoading" class="related-loading-text">
-              正在加载关联热点...
-            </span>
-
-            <div v-else class="related-hotspot-list">
-              <button
-                v-for="item in relatedHotspots"
-                :key="item.id"
-                type="button"
-                class="related-hotspot-card"
-                @click="goRelatedHotspot(item.id)"
-              >
-                <span class="related-platform">{{ getPlatformLabel(item.platform) }}</span>
-                <span class="related-title">{{ cleanTitle(item.title) }}</span>
-                <span class="related-meta">
-                  <template v-if="item.rankNum !== null && item.rankNum !== undefined">
-                    #{{ item.rankNum }}
-                  </template>
-                  <template v-if="item.hotValue !== null && item.hotValue !== undefined">
-                    · {{ formatHotValue(item.hotValue) }}
-                  </template>
-                </span>
-              </button>
-
-              <button
-                v-for="id in otherRelatedHotspotFallbackIds"
-                :key="id"
-                type="button"
-                class="related-hotspot-card fallback"
-                @click="goRelatedHotspot(id)"
-              >
-                <span class="related-platform">热点ID</span>
-                <span class="related-title">{{ id }}</span>
-                <span class="related-meta">点击查看详情</span>
-              </button>
+          <div class="detail-hero__facts">
+            <div class="detail-fact">
+              <span>平台排名</span>
+              <strong>{{ detail.rankNum ?? '暂无' }}</strong>
+            </div>
+            <div class="detail-fact">
+              <span>{{ getPlatformHeatLabel(detail.platform) }}</span>
+              <strong>{{ formatHotValue(getHotValue(detail), detail.platform) }}</strong>
+            </div>
+            <div class="detail-fact">
+              <span>更新时间</span>
+              <strong>{{ formatDateTime(getHotspotTime(detail)) }}</strong>
+            </div>
+            <div class="detail-fact">
+              <span>关联热点</span>
+              <strong>{{ relatedHotspotIds.length }}</strong>
             </div>
           </div>
         </div>
 
-        <div class="summary-content">
+        <div class="detail-hero__side">
+          <div class="detail-side-card">
+            <span>来源链接</span>
+            <el-button type="primary" :disabled="!detail.sourceUrl" @click="openSource">
+              查看原始内容
+            </el-button>
+          </div>
+
+          <div v-if="relatedPlatforms.length" class="detail-side-card">
+            <span>关联平台</span>
+            <div class="detail-side-card__platforms">
+              <PlatformPill v-for="platform in relatedPlatforms" :key="platform" :platform="platform" />
+            </div>
+          </div>
+
+          <div class="detail-side-card detail-side-card--note">
+            <span>分析说明</span>
+            <strong>{{ isCrossPlatform ? '跨平台传播观察' : '单平台热点详情' }}</strong>
+            <p>
+              {{ isCrossPlatform ? '当前热点已经进入跨平台主题分析链路，可结合下方趋势和关联热点一起展示。' : '当前页面聚焦所属平台内的热点表现与时间序列变化。' }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="detail" class="table-card detail-summary-card">
+        <div class="section-head detail-section-head">
+          <div>
+            <h2 class="section-title">AI 简介</h2>
+            <p class="section-subtitle">
+              {{ hasAiSummary ? '当前内容来自现有详情接口中的 AI / 摘要字段。' : '接口暂未提供 AI 简介，页面已自动生成自然的兜底说明。' }}
+            </p>
+          </div>
+          <el-tag v-if="isCrossPlatform" type="warning" effect="plain">跨平台分析</el-tag>
+        </div>
+
+        <div class="detail-summary-card__body">
           <p
             v-for="(paragraph, index) in summaryParagraphs"
-            :key="index"
-            class="summary-paragraph"
+            :key="`${index}-${paragraph.slice(0, 12)}`"
+            class="detail-summary-card__paragraph"
           >
             {{ paragraph }}
           </p>
         </div>
-      </el-card>
+      </section>
 
-      <el-card class="chart-card" shadow="hover">
-        <template #header>
-          <span>趋势分析</span>
-        </template>
+      <section v-if="detail" class="detail-analysis-grid">
+        <article class="table-card detail-trend-card">
+          <div class="section-head detail-section-head">
+            <div>
+              <h2 class="section-title">趋势分析</h2>
+              <p class="section-subtitle">优先展示现有趋势接口返回的排名 / 热度时间序列。</p>
+            </div>
+          </div>
 
-        <div v-if="hasTrendData" ref="chartRef" class="chart"></div>
-        <el-empty v-else description="暂无趋势数据" />
-      </el-card>
+          <div v-if="hasTrendData" ref="chartRef" class="detail-chart"></div>
+          <div v-else class="detail-trend-empty">
+            <el-empty description="暂无趋势数据，等待后续采集形成时间序列" />
+            <p>当后续调度持续抓取同一热点时，这里会自动展示排名或热度折线图。</p>
+          </div>
+        </article>
 
-      <el-card class="source-card" shadow="never">
-        <template #header>
-          <span>原始来源</span>
-        </template>
+        <article class="table-card detail-info-card">
+          <div class="section-head detail-section-head">
+            <div>
+              <h2 class="section-title">基础信息</h2>
+              <p class="section-subtitle">保留用户真正关心的字段，不直接暴露数据库味很重的内部信息。</p>
+            </div>
+          </div>
 
-        <el-button type="primary" :disabled="!detail.sourceUrl" @click="openSource">
-          查看原始内容
-        </el-button>
-      </el-card>
-    </div>
+          <dl class="detail-info-list">
+            <div class="detail-info-item">
+              <dt>所属平台</dt>
+              <dd>{{ getPlatformLabel(detail.platform) }}</dd>
+            </div>
+            <div class="detail-info-item">
+              <dt>平台排名</dt>
+              <dd>{{ detail.rankNum ?? '暂无' }}</dd>
+            </div>
+            <div class="detail-info-item">
+              <dt>{{ getPlatformHeatLabel(detail.platform) }}</dt>
+              <dd>{{ formatHotValue(getHotValue(detail), detail.platform) }}</dd>
+            </div>
+            <div class="detail-info-item">
+              <dt>更新时间</dt>
+              <dd>{{ formatDateTime(getHotspotTime(detail)) }}</dd>
+            </div>
+            <div class="detail-info-item">
+              <dt>来源状态</dt>
+              <dd>{{ detail.sourceUrl ? '已提供来源链接' : '暂无来源链接' }}</dd>
+            </div>
+          </dl>
+        </article>
+      </section>
 
-    <el-empty v-else description="未找到热点详情" />
+      <section v-if="detail && (relatedHotspots.length || relatedHotspotIds.length)" class="table-card detail-related-panel">
+        <div class="section-head detail-section-head">
+          <div>
+            <h2 class="section-title">关联热点</h2>
+            <p class="section-subtitle">
+              {{ isCrossPlatform ? '该区域用于展示跨平台主题下的相关热点。' : '若接口返回了关联热点 ID，这里会兼容展示可跳转入口。' }}
+            </p>
+          </div>
+          <el-tag v-if="relatedLoading" type="info" effect="plain">加载中</el-tag>
+        </div>
+
+        <div class="detail-related-list">
+          <article
+            v-for="item in relatedHotspots"
+            :key="getHotspotId(item)"
+            class="detail-related-item"
+            @click="goDetail(getHotspotId(item))"
+          >
+            <div class="detail-related-item__main">
+              <div class="detail-related-item__title-row">
+                <PlatformPill :platform="item.platform" />
+                <h3>{{ cleanTitle(item.title) || `关联热点 ${getHotspotId(item)}` }}</h3>
+              </div>
+              <div class="detail-related-item__meta">
+                <span>排名：{{ item.rankNum ?? '暂无' }}</span>
+                <span>{{ getPlatformHeatLabel(item.platform) }}：{{ formatHotValue(getHotValue(item), item.platform) }}</span>
+                <span>更新时间：{{ formatDateTime(getHotspotTime(item)) }}</span>
+              </div>
+            </div>
+            <el-button type="primary" plain @click.stop="goDetail(getHotspotId(item))">查看详情</el-button>
+          </article>
+
+          <article
+            v-for="id in missingRelatedIds"
+            :key="`fallback-${id}`"
+            class="detail-related-item detail-related-item--fallback"
+            @click="goDetail(id)"
+          >
+            <div class="detail-related-item__main">
+              <div class="detail-related-item__title-row">
+                <el-tag effect="plain">关联热点</el-tag>
+                <h3>热点 ID：{{ id }}</h3>
+              </div>
+              <div class="detail-related-item__meta">
+                <span>接口未返回完整标题，已保留可跳转入口</span>
+              </div>
+            </div>
+            <el-button type="primary" plain @click.stop="goDetail(id)">查看详情</el-button>
+          </article>
+        </div>
+      </section>
+    </RequestState>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
+import PlatformPill from '../components/PlatformPill.vue'
+import RequestState from '../components/RequestState.vue'
 import { getHotspotDetail, getTrend } from '../api/hotspot'
+import {
+  cleanTitle,
+  formatDateTime,
+  formatHotValue,
+  getHotValue,
+  getHotspotId,
+  getHotspotTime,
+  getPlatformHeatLabel,
+  getPlatformLabel,
+  parsePlatformList
+} from '../utils/hotspot'
 
 const route = useRoute()
 const router = useRouter()
 
+const loading = ref(false)
+const error = ref('')
 const detail = ref(null)
 const trend = ref({
   times: [],
   hotValues: [],
   rankValues: []
 })
-const chartRef = ref(null)
 const relatedHotspots = ref([])
 const relatedLoading = ref(false)
+const chartRef = ref(null)
+
 let chartInstance = null
 
-const platformName = computed(() => {
-  if (!detail.value || !detail.value.platform) return ''
-  return getPlatformLabel(detail.value.platform)
-})
-
-const analysisType = computed(() => {
-  if (!detail.value) return ''
-  const value =
-    detail.value.analysisType ||
-    detail.value.analysis_type ||
-    ''
-
-  return String(value).trim()
-})
-
-const isCrossPlatformSummary = computed(() => {
-  return analysisType.value === 'cross_platform'
-})
-
-const relatedPlatformList = computed(() => {
-  if (!detail.value) return []
-
-  const value =
-    detail.value.relatedPlatforms ||
-    detail.value.related_platforms ||
-    ''
-
-  return String(value)
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
-})
-
-const relatedHotspotIdList = computed(() => {
-  if (!detail.value) return []
-
-  const value =
-    detail.value.relatedHotspotIds ||
-    detail.value.related_hotspot_ids ||
-    ''
-
-  return String(value)
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
-})
-
-const currentHotspotId = computed(() => String(route.params.id || ''))
-
-const otherRelatedHotspotIdList = computed(() => {
+const hotspotId = computed(() => String(route.params.id || ''))
+const analysisType = computed(() =>
+  String(detail.value?.analysisType || detail.value?.analysis_type || '').trim()
+)
+const isCrossPlatform = computed(() => analysisType.value === 'cross_platform')
+const relatedPlatforms = computed(() =>
+  parsePlatformList(detail.value?.relatedPlatforms || detail.value?.related_platforms)
+)
+const relatedHotspotIds = computed(() => {
+  const ids = parsePlatformList(detail.value?.relatedHotspotIds || detail.value?.related_hotspot_ids)
   const seen = new Set()
 
-  return relatedHotspotIdList.value.filter(id => {
-    const normalizedId = String(id)
-    if (!normalizedId || normalizedId === currentHotspotId.value || seen.has(normalizedId)) {
+  return ids.filter(id => {
+    const value = String(id || '')
+    if (!value || value === hotspotId.value || seen.has(value)) {
       return false
     }
-
-    seen.add(normalizedId)
+    seen.add(value)
     return true
   })
 })
 
-const otherRelatedHotspotFallbackIds = computed(() => {
-  const loadedIds = new Set(relatedHotspots.value.map(item => String(item.id)))
-  return otherRelatedHotspotIdList.value.filter(id => !loadedIds.has(String(id)))
+const missingRelatedIds = computed(() => {
+  const loadedIds = new Set(relatedHotspots.value.map(item => String(getHotspotId(item))))
+  return relatedHotspotIds.value.filter(id => !loadedIds.has(String(id)))
 })
 
 const hasAiSummary = computed(() => {
-  if (!detail.value) return false
-
-  const text =
-    detail.value.aiSummary ||
-    detail.value.summary ||
-    detail.value.ai_summary ||
-    ''
-
+  const text = detail.value?.aiSummary || detail.value?.summary || detail.value?.ai_summary || ''
   return String(text).trim().length > 0
 })
 
-const displaySummary = computed(() => {
-  if (!detail.value) return '该热点信息正在加载中。'
+const fallbackSummary = computed(() => {
+  if (!detail.value) return '正在加载热点详情。'
 
-  const aiText =
-    detail.value.aiSummary ||
-    detail.value.summary ||
-    detail.value.ai_summary ||
-    ''
-
-  if (String(aiText).trim()) {
-    return String(aiText).trim()
+  if (isCrossPlatform.value) {
+    const platformText = relatedPlatforms.value.map(getPlatformLabel).join('、') || '多个平台'
+    return `该热点已被系统识别为跨平台关联话题，目前涉及${platformText}的共同讨论。当前接口尚未返回完整 AI 简介，因此页面先展示基础信息、趋势变化和关联热点入口，便于继续追踪传播路径。`
   }
 
-  return genericSummary.value
+  const rankText =
+    detail.value.rankNum === null || detail.value.rankNum === undefined
+      ? '当前已进入平台热点列表'
+      : `当前位于平台榜单第 ${detail.value.rankNum} 位`
+  const heatText =
+    getHotValue(detail.value) === null || getHotValue(detail.value) === undefined
+      ? '暂未返回明确的热度指标'
+      : `${getPlatformHeatLabel(detail.value.platform)}约为 ${formatHotValue(
+          getHotValue(detail.value),
+          detail.value.platform
+        )}`
+
+  return `该热点正在${getPlatformLabel(detail.value.platform)}中受到关注，${rankText}，${heatText}。当前接口暂无 AI 简介时，页面会自动提供这段自然说明，避免详情页出现空白内容。`
 })
 
-const summaryParagraphs = computed(() => {
-  return String(displaySummary.value || '')
+const displaySummary = computed(() => {
+  const text = detail.value?.aiSummary || detail.value?.summary || detail.value?.ai_summary || ''
+  return String(text).trim() || fallbackSummary.value
+})
+
+const summaryParagraphs = computed(() =>
+  String(displaySummary.value)
     .split(/\n+/)
-    .map(item => item.replace(/^[\s　]+/, '').trim())
+    .map(item => item.trim())
     .filter(Boolean)
+)
+
+const heroDescription = computed(() => {
+  if (!detail.value) return ''
+
+  const pieces = [
+    `${getPlatformLabel(detail.value.platform)}热点分析页`,
+    detail.value.rankNum !== null && detail.value.rankNum !== undefined
+      ? `当前排名第 ${detail.value.rankNum} 位`
+      : '当前排名暂无',
+    `${getPlatformHeatLabel(detail.value.platform)}为 ${formatHotValue(
+      getHotValue(detail.value),
+      detail.value.platform
+    )}`
+  ]
+
+  if (isCrossPlatform.value && relatedPlatforms.value.length) {
+    pieces.push(`已关联 ${relatedPlatforms.value.map(getPlatformLabel).join('、')}`)
+  }
+
+  return pieces.join('，') + '。'
 })
 
 const hasTrendData = computed(() => {
   return (
+    Array.isArray(trend.value.times) &&
     trend.value.times.length > 0 &&
-    (trend.value.hotValues.length > 0 || trend.value.rankValues.length > 0)
+    (trend.value.hotValues.some(value => value !== null && value !== undefined) ||
+      trend.value.rankValues.some(value => value !== null && value !== undefined))
   )
 })
 
-const genericSummary = computed(() => {
-  if (!detail.value) {
-    return '该热点信息正在加载中。'
-  }
-
-  const platform = platformName.value || '相关平台'
-
-  const hasRank =
-    detail.value.rankNum !== null &&
-    detail.value.rankNum !== undefined &&
-    detail.value.rankNum !== ''
-
-  const hasHotValue =
-    detail.value.hotValue !== null &&
-    detail.value.hotValue !== undefined &&
-    detail.value.hotValue !== ''
-
-  const rankText = hasRank
-    ? `当前位于第 ${detail.value.rankNum} 位`
-    : '当前已进入热点列表'
-
-  const hotText = hasHotValue
-    ? `热度约为 ${formatHotValue(detail.value.hotValue)}`
-    : '暂无明确热度数据'
-
-  if (detail.value.isSpecial) {
-    return `这个话题目前被${platform}放在较醒目的位置展示，通常代表平台认为它具有较高关注价值。由于这类内容不一定参与普通热榜排名，系统会单独记录它的出现情况，你可以通过下方趋势图或来源链接进一步了解。`
-  }
-
-  return `这个话题正在${platform}热榜中受到关注，${rankText}，${hotText}。系统暂时还没有生成详细解读，你可以先通过下方趋势图观察它的变化，或点击来源链接查看平台原始内容。`
-})
-
-async function loadRelatedHotspots() {
-  relatedHotspots.value = []
-
-  if (!isCrossPlatformSummary.value || otherRelatedHotspotIdList.value.length === 0) {
-    return
-  }
-
-  relatedLoading.value = true
-
-  try {
-    const results = await Promise.all(
-      otherRelatedHotspotIdList.value.map(async id => {
-        try {
-          const data = await getHotspotDetail(id)
-          return data || { id }
-        } catch (error) {
-          console.warn(`关联热点 ${id} 加载失败：`, error)
-          return null
-        }
-      })
-    )
-
-    relatedHotspots.value = results
-      .filter(Boolean)
-      .map((item, index) => ({
-        ...item,
-        id: item.id || otherRelatedHotspotIdList.value[index]
-      }))
-  } finally {
-    relatedLoading.value = false
-  }
-}
-
-async function loadDetail(id) {
-  if (!id) return
-
-  detail.value = null
-  relatedHotspots.value = []
-  trend.value = {
-    times: [],
-    hotValues: [],
-    rankValues: []
-  }
-
+function disposeChart() {
   if (chartInstance) {
     chartInstance.dispose()
     chartInstance = null
   }
-
-  try {
-    const detailRes = await getHotspotDetail(id)
-    const trendRes = await getTrend(id)
-
-    detail.value = detailRes
-
-    if (
-      trendRes &&
-      Array.isArray(trendRes.times) &&
-      Array.isArray(trendRes.hotValues) &&
-      Array.isArray(trendRes.rankValues)
-    ) {
-      trend.value = {
-        times: trendRes.times,
-        hotValues: trendRes.hotValues,
-        rankValues: trendRes.rankValues
-      }
-    } else {
-      trend.value = {
-        times: [],
-        hotValues: [],
-        rankValues: []
-      }
-    }
-
-    await loadRelatedHotspots()
-    await nextTick()
-    initChart()
-  } catch (error) {
-    console.error('详情页加载失败：', error)
-    detail.value = null
-    relatedHotspots.value = []
-    trend.value = {
-      times: [],
-      hotValues: [],
-      rankValues: []
-    }
-  }
-}
-
-function goRelatedHotspot(id) {
-  if (!id || String(id) === currentHotspotId.value) return
-  router.push({ name: 'detail', params: { id } })
-}
-
-function goBack() {
-  router.back()
-}
-
-function openSource() {
-  if (detail.value && detail.value.sourceUrl) {
-    window.open(detail.value.sourceUrl, '_blank')
-  }
-}
-
-function cleanTitle(title) {
-  if (!title) return ''
-  return String(title).replace(/^#|#$/g, '')
-}
-
-function getPlatformLabel(platform) {
-  if (platform === 'weibo') return '微博'
-  if (platform === 'douyin') return '抖音'
-  if (platform === 'bilibili') return 'B站'
-  return platform || '未知平台'
-}
-
-function formatHotValue(value) {
-  if (value === null || value === undefined || value === '') return '暂无'
-
-  const num = Number(value)
-  if (Number.isNaN(num)) return String(value)
-
-  if (num >= 100000000) {
-    return (num / 100000000).toFixed(1).replace(/\.0$/, '') + '亿'
-  }
-  if (num >= 10000) {
-    return (num / 10000).toFixed(1).replace(/\.0$/, '') + '万'
-  }
-  return String(num)
-}
-
-function formatTooltipHotValue(value) {
-  if (value === null || value === undefined || value === '') return '暂无'
-  return formatHotValue(value)
 }
 
 function resizeChart() {
@@ -454,62 +346,39 @@ function resizeChart() {
 }
 
 function initChart() {
-  if (!chartRef.value || !hasTrendData.value) return
+  if (!chartRef.value || !hasTrendData.value || !detail.value) return
 
-  if (chartInstance) {
-    chartInstance.dispose()
-  }
-
+  disposeChart()
   chartInstance = echarts.init(chartRef.value)
 
   chartInstance.setOption({
+    color: ['#2f6bff', '#28b8ff'],
     tooltip: {
       trigger: 'axis',
-      axisPointer: {
-        type: 'cross'
-      },
-      formatter(params) {
-        if (!params || !params.length) return ''
-
-        const time = params[0].axisValue || ''
-        let rankText = '暂无'
-        let hotText = '暂无'
-
-        params.forEach(item => {
-          if (item.seriesName === '排名') {
-            rankText =
-              item.data === null || item.data === undefined ? '暂无' : `#${item.data}`
-          }
-          if (item.seriesName === '热度') {
-            hotText = formatTooltipHotValue(item.data)
-          }
-        })
-
-        return `
-          <div style="line-height: 1.8;">
-            <div style="margin-bottom: 6px; font-weight: 600;">${time}</div>
-            <div>排名：${rankText}</div>
-            <div>热度：${hotText}</div>
-          </div>
-        `
-      }
+      axisPointer: { type: 'cross' }
     },
     legend: {
-      top: 0,
-      data: ['排名', '热度']
+      top: 4,
+      data: ['平台排名', getPlatformHeatLabel(detail.value.platform)]
     },
     grid: {
-      left: 70,
-      right: 80,
-      top: 50,
-      bottom: 70
+      left: 54,
+      right: 76,
+      top: 56,
+      bottom: 48
     },
     xAxis: {
       type: 'category',
       data: trend.value.times,
       boundaryGap: false,
       axisLabel: {
-        rotate: 30
+        color: '#5f728f',
+        rotate: 24
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(101, 132, 188, 0.3)'
+        }
       }
     },
     yAxis: [
@@ -517,231 +386,485 @@ function initChart() {
         type: 'value',
         name: '排名',
         inverse: true,
-        min: 1,
-        max: 50,
-        interval: 5,
-        axisLine: {
-          show: true
-        },
+        min: value => Math.max(1, Math.floor(value.min || 1) - 1),
+        axisLabel: { color: '#5f728f' },
         splitLine: {
-          show: true
+          lineStyle: {
+            color: 'rgba(135, 160, 206, 0.14)'
+          }
         }
       },
       {
         type: 'value',
-        name: '热度',
+        name: getPlatformHeatLabel(detail.value.platform),
         position: 'right',
-        axisLine: {
-          show: true
-        },
-        splitLine: {
-          show: false
-        },
         axisLabel: {
-          formatter(value) {
-            if (value >= 100000000) return (value / 100000000).toFixed(1) + '亿'
-            if (value >= 10000) return (value / 10000).toFixed(0) + '万'
-            return value
-          }
-        }
+          color: '#5f728f',
+          formatter: value => formatHotValue(value, detail.value.platform)
+        },
+        splitLine: { show: false }
       }
     ],
     series: [
       {
-        name: '排名',
+        name: '平台排名',
         type: 'line',
         yAxisIndex: 0,
         data: trend.value.rankValues,
         smooth: true,
         connectNulls: false,
-        symbol: 'circle',
-        symbolSize: 6
+        symbolSize: 7,
+        lineStyle: {
+          width: 3
+        },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(47, 107, 255, 0.18)' },
+            { offset: 1, color: 'rgba(47, 107, 255, 0.02)' }
+          ])
+        }
       },
       {
-        name: '热度',
+        name: getPlatformHeatLabel(detail.value.platform),
         type: 'line',
         yAxisIndex: 1,
         data: trend.value.hotValues,
         smooth: true,
         connectNulls: false,
-        symbol: 'circle',
-        symbolSize: 6
+        symbolSize: 7,
+        lineStyle: {
+          width: 3
+        }
       }
     ]
   })
+}
 
-  window.removeEventListener('resize', resizeChart)
-  window.addEventListener('resize', resizeChart)
+async function loadRelatedHotspots() {
+  relatedHotspots.value = []
+
+  if (!relatedHotspotIds.value.length) return
+
+  relatedLoading.value = true
+
+  try {
+    const results = await Promise.all(
+      relatedHotspotIds.value.slice(0, 12).map(async id => {
+        try {
+          const result = await getHotspotDetail(id)
+          return result ? { ...result, id: getHotspotId(result, id) } : null
+        } catch {
+          return null
+        }
+      })
+    )
+
+    relatedHotspots.value = results.filter(Boolean)
+  } finally {
+    relatedLoading.value = false
+  }
+}
+
+async function loadPage() {
+  if (!hotspotId.value) return
+
+  loading.value = true
+  error.value = ''
+  detail.value = null
+  trend.value = {
+    times: [],
+    hotValues: [],
+    rankValues: []
+  }
+  relatedHotspots.value = []
+  disposeChart()
+
+  try {
+    const [detailResult, trendResult] = await Promise.allSettled([
+      getHotspotDetail(hotspotId.value),
+      getTrend(hotspotId.value)
+    ])
+
+    if (detailResult.status !== 'fulfilled') {
+      throw detailResult.reason
+    }
+
+    detail.value = detailResult.value || null
+
+    if (trendResult.status === 'fulfilled') {
+      trend.value = {
+        times: Array.isArray(trendResult.value?.times) ? trendResult.value.times : [],
+        hotValues: Array.isArray(trendResult.value?.hotValues) ? trendResult.value.hotValues : [],
+        rankValues: Array.isArray(trendResult.value?.rankValues) ? trendResult.value.rankValues : []
+      }
+    }
+
+    await loadRelatedHotspots()
+    await nextTick()
+    initChart()
+  } catch (requestError) {
+    error.value = requestError?.message || '热点详情加载失败，请稍后重试'
+    detail.value = null
+    trend.value = {
+      times: [],
+      hotValues: [],
+      rankValues: []
+    }
+    relatedHotspots.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+function openSource() {
+  if (detail.value?.sourceUrl) {
+    window.open(detail.value.sourceUrl, '_blank', 'noopener,noreferrer')
+  }
+}
+
+function goDetail(id) {
+  if (!id) return
+  router.push({ name: 'detail', params: { id } })
+}
+
+function goBack() {
+  router.back()
 }
 
 watch(
   () => route.params.id,
-  id => {
-    loadDetail(id)
+  async () => {
+    await loadPage()
   },
   { immediate: true }
 )
 
+watch(
+  () => hasTrendData.value,
+  async hasData => {
+    if (!hasData) {
+      disposeChart()
+      return
+    }
+
+    await nextTick()
+    initChart()
+  }
+)
+
+onMounted(() => {
+  window.addEventListener('resize', resizeChart)
+})
+
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeChart)
-  if (chartInstance) {
-    chartInstance.dispose()
-    chartInstance = null
-  }
+  disposeChart()
 })
 </script>
 
 <style scoped>
-.detail-page {
-  max-width: 960px;
-  margin: 30px auto;
-  padding: 20px;
+.detail-toolbar {
+  padding: 16px 22px;
 }
 
-.top-bar {
-  margin-bottom: 20px;
-}
-
-.title-block {
-  margin-bottom: 20px;
-}
-
-.title-block h1 {
-  margin: 0 0 12px;
-  font-size: 30px;
-  color: #303133;
-  line-height: 1.4;
-}
-
-.meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  color: #606266;
-}
-
-.summary-card,
-.chart-card,
-.source-card {
-  margin-top: 20px;
-}
-
-.summary-header {
+.detail-toolbar__inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.summary-tags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cross-platform-info {
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-  color: #606266;
-  font-size: 14px;
-}
-
-.cross-platform-row {
-  display: flex;
+  gap: 14px;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  line-height: 1.7;
 }
 
-.cross-platform-row + .cross-platform-row {
-  margin-top: 6px;
+.detail-toolbar__tip {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.cross-platform-label {
-  color: #303133;
-  font-weight: 600;
+.detail-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 22px;
 }
 
-.related-hotspot-row {
-  align-items: flex-start;
-}
-
-.related-loading-text {
-  color: #909399;
-}
-
-.related-hotspot-list {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.detail-hero__main {
   min-width: 0;
 }
 
-.related-hotspot-card {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #ffffff;
-  cursor: pointer;
-  text-align: left;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+.detail-hero__badges {
+  display: flex;
   align-items: center;
   gap: 10px;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  flex-wrap: wrap;
 }
 
-.related-hotspot-card:hover {
-  border-color: #409eff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.12);
-  transform: translateY(-1px);
+.detail-analysis-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #8a4b00;
+  background: linear-gradient(135deg, rgba(255, 247, 220, 0.96), rgba(255, 238, 190, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.22);
 }
 
-.related-hotspot-card.fallback {
-  border-style: dashed;
-}
-
-.related-platform {
-  color: #409eff;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.related-title {
-  color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.related-meta {
-  color: #909399;
+.detail-analysis-flag strong {
   font-size: 13px;
-  white-space: nowrap;
 }
 
-.summary-content {
-  color: #303133;
-  font-size: 15px;
+.detail-analysis-flag span {
+  font-size: 12px;
 }
 
-.summary-paragraph {
+.detail-hero__title {
+  margin-bottom: 14px;
+  max-width: 980px;
+}
+
+.detail-hero__subtitle {
+  max-width: 900px;
+}
+
+.detail-hero__facts {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-fact {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(135, 160, 206, 0.12);
+}
+
+.detail-fact span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detail-fact strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.detail-hero__side {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-side-card {
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(135, 160, 206, 0.12);
+  display: grid;
+  gap: 10px;
+}
+
+.detail-side-card span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-side-card strong {
+  font-size: 18px;
+}
+
+.detail-side-card p {
   margin: 0;
-  line-height: 1.9;
-  text-indent: 2em;
+  color: var(--text-secondary);
+  line-height: 1.7;
 }
 
-.summary-paragraph + .summary-paragraph {
-  margin-top: 4px;
+.detail-side-card__platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.chart {
+.detail-summary-card {
+  padding: 24px;
+}
+
+.detail-section-head {
+  margin-bottom: 18px;
+}
+
+.detail-summary-card__body {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  padding-left: 18px;
+}
+
+.detail-summary-card__body::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #2f6bff, #28b8ff);
+}
+
+.detail-summary-card__paragraph {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.95;
+}
+
+.detail-summary-card__paragraph:first-child {
+  font-size: 16px;
+}
+
+.detail-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 16px;
+}
+
+.detail-trend-card,
+.detail-info-card,
+.detail-related-panel {
+  padding: 22px;
+}
+
+.detail-chart {
   height: 420px;
+}
+
+.detail-trend-empty {
+  display: grid;
+  gap: 10px;
+  padding: 8px 0 0;
+}
+
+.detail-trend-empty p {
+  margin: 0;
+  text-align: center;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.detail-info-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.detail-info-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: rgba(245, 249, 255, 0.8);
+  border: 1px solid rgba(135, 160, 206, 0.12);
+}
+
+.detail-info-item dt {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-info-item dd {
+  margin: 0;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.detail-related-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-related-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 16px 4px;
+  border-bottom: 1px solid rgba(135, 160, 206, 0.12);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.detail-related-item:last-child {
+  border-bottom: 0;
+}
+
+.detail-related-item:hover {
+  transform: translateX(4px);
+}
+
+.detail-related-item--fallback {
+  border-bottom-style: dashed;
+}
+
+.detail-related-item__main {
+  min-width: 0;
+}
+
+.detail-related-item__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.detail-related-item__title-row h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.detail-related-item__meta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+  .detail-hero,
+  .detail-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .detail-hero__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .detail-related-item {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .detail-hero__facts {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
