@@ -4,8 +4,8 @@
       <button class="app-brand" type="button" @click="goHome">
         <span class="app-brand__mark">HA</span>
         <span class="app-brand__copy">
-          <strong>跨平台热点聚合分析器</strong>
-          <small>Spring Boot · Vue 3 · Weibo / Douyin / Bilibili</small>
+          <strong>热点聚合分析器</strong>
+          <small>微博 · 抖音 · B站</small>
         </span>
       </button>
 
@@ -51,7 +51,7 @@
 
       <div class="app-header__status">
         <span class="status-dot"></span>
-        <span>统一展示热榜、趋势与 AI 分析</span>
+        <span>实时聚合多平台热点</span>
       </div>
     </div>
   </header>

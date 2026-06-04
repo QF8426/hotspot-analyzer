@@ -43,7 +43,7 @@
           <div class="section-head cross-topic-section">
             <div>
               <h2 class="section-title">关联平台与热点</h2>
-              <p class="section-subtitle">展示该主题下已经聚合的热点来源，便于演示“多平台共同关注”的识别结果。</p>
+              <p class="section-subtitle">展示该主题下已经聚合的热点来源，便于对比不同平台的共同关注情况。</p>
             </div>
           </div>
 

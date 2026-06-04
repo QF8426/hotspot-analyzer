@@ -5,7 +5,7 @@
 
 <mapper namespace="com.example.hotspotanalyzer.mapper.CrossPlatformTopicMapper">
 
-    <select id="findTopics" resultType="com.example.hotspotanalyzer.vo.CrossPlatformTopicVO">
+    <select id="findTopicsPage" resultType="com.example.hotspotanalyzer.vo.CrossPlatformTopicVO">
         SELECT
             t.id,
             t.main_title AS mainTitle,
@@ -51,7 +51,21 @@
             totalHotValue DESC,
             t.last_seen_time DESC,
             t.id DESC
-        LIMIT #{limit}
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <select id="countTopics" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT t.id)
+        FROM cross_platform_topic t
+        WHERE t.topic_status = 'active'
+        <if test="platforms != null and platforms.size() &gt; 0">
+            <foreach collection="platforms" item="platform" separator="">
+                AND FIND_IN_SET(#{platform}, t.related_platforms)
+            </foreach>
+        </if>
+        <if test="todayOnly != null and todayOnly">
+            AND DATE(COALESCE(t.last_seen_time, t.first_seen_time, t.created_at)) = CURDATE()
+        </if>
     </select>
 
     <select id="findTopicById" resultType="com.example.hotspotanalyzer.vo.CrossPlatformTopicVO">

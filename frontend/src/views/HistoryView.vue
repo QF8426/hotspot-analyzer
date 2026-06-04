@@ -1,10 +1,10 @@
 <template>
   <div class="app-container page-stack">
     <section class="page-hero history-hero">
-      <span class="page-hero__eyebrow">History Archive</span>
+      <span class="page-hero__eyebrow">历史观察</span>
       <h1 class="page-hero__title">历史榜单查询</h1>
       <p class="page-hero__subtitle">
-        基于已归档的日榜摘要数据，支持按平台、日期和关键词回看历史热点表现，适合作为答辩展示中的“时间维度分析”入口。
+        基于已归档的日榜摘要数据，支持按平台、日期和关键词回看历史热点表现，帮助从时间维度观察话题变化。
       </p>
     </section>
 
@@ -57,7 +57,7 @@
         <div class="section-head history-section-head">
           <div>
             <h2 class="section-title">历史热点列表</h2>
-            <p class="section-subtitle">当平台选择“全部”时，页面会并行合并微博、抖音、B站三端结果。</p>
+            <p class="section-subtitle">当平台选择“全部”时，页面会统一汇总微博、抖音、B站的归档结果。</p>
           </div>
         </div>
 

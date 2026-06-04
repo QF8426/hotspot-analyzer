@@ -4,6 +4,7 @@ import com.example.hotspotanalyzer.mapper.CrossPlatformTopicMapper;
 import com.example.hotspotanalyzer.service.CrossPlatformTopicService;
 import com.example.hotspotanalyzer.vo.CrossPlatformHotspotVO;
 import com.example.hotspotanalyzer.vo.CrossPlatformTopicVO;
+import com.example.hotspotanalyzer.vo.PageResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -17,8 +18,8 @@ import java.util.stream.Collectors;
 @Service
 public class CrossPlatformTopicServiceImpl implements CrossPlatformTopicService {
 
-    private static final int DEFAULT_LIMIT = 50;
-    private static final int MAX_LIMIT = 200;
+    private static final int DEFAULT_PAGE_SIZE = 10;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final CrossPlatformTopicMapper crossPlatformTopicMapper;
 
@@ -27,16 +28,21 @@ public class CrossPlatformTopicServiceImpl implements CrossPlatformTopicService 
     }
 
     @Override
-    public List<CrossPlatformTopicVO> getTopics(String platformCombo, Integer limit, Boolean todayOnly) {
+    public PageResponse<CrossPlatformTopicVO> getTopicsPage(String platformCombo, Integer page, Integer pageSize, Boolean todayOnly) {
         List<String> platforms = parsePlatformCombo(platformCombo);
-        int safeLimit = normalizeLimit(limit);
+        int safePage = page == null || page <= 0 ? 1 : page;
+        int safePageSize = normalizePageSize(pageSize);
+        int offset = (safePage - 1) * safePageSize;
 
-        List<CrossPlatformTopicVO> topics = crossPlatformTopicMapper.findTopics(platforms, safeLimit, todayOnly);
-        for (CrossPlatformTopicVO topic : topics) {
+        Long total = crossPlatformTopicMapper.countTopics(platforms, todayOnly);
+        List<CrossPlatformTopicVO> records = crossPlatformTopicMapper.findTopicsPage(platforms, offset, safePageSize, todayOnly);
+        
+        for (CrossPlatformTopicVO topic : records) {
             List<CrossPlatformHotspotVO> hotspots = crossPlatformTopicMapper.findHotspotsByTopicId(topic.getId());
             topic.setHotspots(hotspots);
         }
-        return topics;
+        
+        return new PageResponse<>(records, total, safePage, safePageSize);
     }
 
     @Override
@@ -69,10 +75,10 @@ public class CrossPlatformTopicServiceImpl implements CrossPlatformTopicService 
                 .collect(Collectors.toList());
     }
 
-    private int normalizeLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_LIMIT;
+    private int normalizePageSize(Integer pageSize) {
+        if (pageSize == null || pageSize <= 0) {
+            return DEFAULT_PAGE_SIZE;
         }
-        return Math.min(limit, MAX_LIMIT);
+        return Math.min(pageSize, MAX_PAGE_SIZE);
     }
 }

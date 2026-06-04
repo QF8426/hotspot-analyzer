@@ -10,9 +10,13 @@ import java.util.List;
 @Mapper
 public interface CrossPlatformTopicMapper {
 
-    List<CrossPlatformTopicVO> findTopics(@Param("platforms") List<String> platforms,
-                                          @Param("limit") Integer limit,
-                                          @Param("todayOnly") Boolean todayOnly);
+    List<CrossPlatformTopicVO> findTopicsPage(@Param("platforms") List<String> platforms,
+                                              @Param("offset") Integer offset,
+                                              @Param("pageSize") Integer pageSize,
+                                              @Param("todayOnly") Boolean todayOnly);
+
+    Long countTopics(@Param("platforms") List<String> platforms,
+                     @Param("todayOnly") Boolean todayOnly);
 
     CrossPlatformTopicVO findTopicById(@Param("id") Long id);
 

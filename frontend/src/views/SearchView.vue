@@ -1,10 +1,10 @@
 <template>
   <div class="app-container page-stack">
     <section class="page-hero search-hero">
-      <span class="page-hero__eyebrow">Keyword Search</span>
+      <span class="page-hero__eyebrow">跨平台检索</span>
       <h1 class="page-hero__title">热点搜索</h1>
       <p class="page-hero__subtitle">
-        支持跨平台关键词检索，统一展示微博、抖音、B站中已入库的热点结果，便于快速定位演示样例。
+        支持跨平台关键词检索，统一展示微博、抖音、B站中已入库的热点结果，便于快速定位正在传播的话题内容。
       </p>
 
       <div class="search-hero__toolbar">
@@ -48,7 +48,7 @@
             <div class="section-head search-section-head">
               <div>
                 <h2 class="section-title">搜索结果列表</h2>
-                <p class="section-subtitle">点击任意结果可进入热点详情页，继续查看 AI 简介、趋势图和来源链接。</p>
+                <p class="section-subtitle">点击任意结果可进入热点详情页，继续查看热点解读、趋势变化和来源信息。</p>
               </div>
               <el-tag type="primary" effect="plain">关键词：{{ keyword }}</el-tag>
             </div>

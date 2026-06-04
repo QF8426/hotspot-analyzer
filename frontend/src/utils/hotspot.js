@@ -16,7 +16,7 @@ export const PLATFORM_META = {
     glyph: '抖',
     accent: 'douyin',
     heatLabel: '热度',
-    description: '抖音热视频与评论热议',
+    description: '抖音热视频与讨论热点',
     dailyTitle: '抖音今日榜单'
   },
   bilibili: {
@@ -34,7 +34,7 @@ export function getPlatformMeta(platform) {
   return PLATFORM_META[platform] || {
     key: platform || 'unknown',
     label: platform || '未知平台',
-    glyph: '平',
+    glyph: '站',
     accent: 'generic',
     heatLabel: '热度',
     description: '平台热点',

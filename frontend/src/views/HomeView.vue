@@ -2,10 +2,10 @@
   <div class="app-container page-stack">
     <section class="page-hero home-hero">
       <div class="home-hero__content">
-        <span class="page-hero__eyebrow">Hotspot Intelligence Hub</span>
-        <h1 class="page-hero__title">跨平台热点聚合分析器</h1>
+        <span class="page-hero__eyebrow">热点观察工作台</span>
+        <h1 class="page-hero__title">跨平台热点观察台</h1>
         <p class="page-hero__subtitle">
-          面向微博、抖音、B站热点榜单的统一展示入口，提供趋势可视化、AI 简介、跨平台主题聚合和历史回看能力，适合毕业设计答辩中的系统总览展示。
+          聚合微博、抖音、B站热点内容，展示趋势变化与热点解读，帮助用户快速了解正在传播的重要事件。
         </p>
 
         <div class="home-hero__search">
@@ -39,101 +39,130 @@
             {{ category.name }}
           </button>
         </div>
+
+        <div class="home-hero__mini-stats">
+          <article class="home-hero__mini-stat">
+            <span class="home-hero__mini-label">今日热点总数</span>
+            <strong>{{ totalTodayCount }}</strong>
+            <small>汇总三平台今日热点表现</small>
+          </article>
+
+          <article class="home-hero__mini-stat">
+            <span class="home-hero__mini-label">跨平台主题数</span>
+            <strong>{{ crossTopicCount }}</strong>
+            <small>观察多平台共同关注的话题</small>
+          </article>
+        </div>
       </div>
 
       <div class="home-hero__aside">
         <div class="home-pipeline">
           <div class="home-pipeline__head">
-            <span>系统链路</span>
-            <small>Data Flow</small>
+            <span>系统能力</span>
+            <small>实时观察</small>
           </div>
 
           <div class="home-pipeline__steps">
             <div class="home-pipeline__step">
-              <strong>热榜采集</strong>
-              <span>微博 / 抖音 / B站</span>
+              <strong>多平台采集</strong>
+              <span>同步观察微博、抖音与 B 站热点</span>
             </div>
             <div class="home-pipeline__step">
-              <strong>AI 简介</strong>
-              <span>摘要与热点说明</span>
+              <strong>热点解读</strong>
+              <span>快速阅读事件摘要与核心信息</span>
             </div>
             <div class="home-pipeline__step">
-              <strong>跨平台分析</strong>
-              <span>识别共同事件主题</span>
+              <strong>关联分析</strong>
+              <span>识别多平台共同升温的话题</span>
             </div>
             <div class="home-pipeline__step">
-              <strong>前端展示</strong>
-              <span>榜单、详情与趋势</span>
+              <strong>趋势观察</strong>
+              <span>查看榜单变化与持续传播情况</span>
             </div>
           </div>
 
-          <p class="home-pipeline__foot">沿用现有 API，不写死假数据，保持与后端链路一致。</p>
-        </div>
-
-        <div class="home-hero__legend">
-          <div class="legend-item">
-            <span class="legend-item__dot legend-item__dot--weibo"></span>
-            <span>微博热搜</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-item__dot legend-item__dot--douyin"></span>
-            <span>抖音热榜</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-item__dot legend-item__dot--bilibili"></span>
-            <span>B站热搜</span>
-          </div>
+          <p class="home-pipeline__foot">围绕热点发现、聚合与追踪，提供统一的观察入口。</p>
         </div>
       </div>
     </section>
 
-    <section class="metric-grid home-metric-grid">
-      <article class="metric-card home-metric-card home-metric-card--total">
-        <div class="metric-card__kicker">
-          <span class="metric-card__icon">Σ</span>
-          今日概览
+    <RequestState
+      :loading="crossLoading"
+      :error="crossError"
+      :empty="!crossLoading && !crossError && crossPreviewTopics.length === 0"
+      empty-description="暂未识别到跨平台共同热点"
+      @retry="loadCrossTopics"
+    >
+      <section class="table-card home-cross-panel">
+        <div class="section-head cross-preview-head">
+          <div>
+            <h2 class="section-title">跨平台热点精选</h2>
+            <p class="section-subtitle">聚焦同时在多个平台受到关注的话题，帮助快速发现传播联动。</p>
+          </div>
+          <el-button type="primary" @click="goCrossPlatform">查看全部主题</el-button>
         </div>
-        <div class="metric-card__label">今日热点总数</div>
-        <div class="metric-card__value mono-text">{{ totalTodayCount }}</div>
-        <div class="metric-card__hint">来自三平台今日趋势数据的汇总统计。</div>
-      </article>
 
-      <article class="metric-card home-metric-card home-metric-card--platforms">
-        <div class="metric-card__kicker">
-          <span class="metric-card__icon">3</span>
-          Platform
-        </div>
-        <div class="metric-card__label">覆盖平台数</div>
-        <div class="metric-card__value mono-text">{{ platformCount }}</div>
-        <div class="metric-card__hint">当前统一覆盖微博、抖音、B站三端热点。</div>
-      </article>
+        <div class="cross-preview-carousel-wrap">
+          <el-button
+            v-if="crossPageCount > 1"
+            class="cross-preview-nav cross-preview-nav--prev"
+            circle
+            :disabled="crossSlideIndex === 0"
+            @click.stop="scrollCrossPreview(-1)"
+          >
+            ‹
+          </el-button>
 
-      <article class="metric-card home-metric-card home-metric-card--summary">
-        <div class="metric-card__kicker">
-          <span class="metric-card__icon">AI</span>
-          Summary
-        </div>
-        <div class="metric-card__label">跨平台 AI 简介数</div>
-        <div class="metric-card__value mono-text">{{ crossSummaryCount }}</div>
-        <div class="metric-card__hint">按跨平台主题接口中返回 summary 的主题数兼容统计。</div>
-      </article>
+          <div ref="crossScrollerRef" class="cross-preview-carousel">
+            <article
+              v-for="topic in crossPreviewTopics"
+              :key="topic.id"
+              class="cross-preview-card cross-preview-card--slide"
+              @click="goCrossTopic(topic)"
+            >
+              <div class="cross-preview-card__head">
+                <h3>{{ cleanTitle(topic.mainTitle) }}</h3>
+                <el-tag type="primary" size="small" effect="plain">跨平台主题</el-tag>
+              </div>
 
-      <article class="metric-card home-metric-card home-metric-card--topics">
-        <div class="metric-card__kicker">
-          <span class="metric-card__icon">CP</span>
-          Topic
+              <div class="cross-preview-card__platforms">
+                <PlatformPill
+                  v-for="platform in getTopicPlatforms(topic)"
+                  :key="platform"
+                  :platform="platform"
+                />
+              </div>
+
+              <p class="cross-preview-card__summary">
+                {{ buildSummaryText(topic.summary, '该主题已被系统识别为多平台共同关注的话题，可继续查看详情。', 124) }}
+              </p>
+
+              <div class="cross-preview-card__meta">
+                <span>关联平台：{{ topic.platformCount || getTopicPlatforms(topic).length }}</span>
+                <span>关联热点：{{ topic.hotspotCount || topic.hotspots?.length || 0 }}</span>
+                <span>综合指标：{{ formatHotValue(getTopicTotalHotValue(topic)) }}</span>
+              </div>
+            </article>
+          </div>
+
+          <el-button
+            v-if="crossPageCount > 1"
+            class="cross-preview-nav cross-preview-nav--next"
+            circle
+            :disabled="crossSlideIndex >= crossPageCount - 1"
+            @click.stop="scrollCrossPreview(1)"
+          >
+            ›
+          </el-button>
         </div>
-        <div class="metric-card__label">今日跨平台主题数</div>
-        <div class="metric-card__value mono-text">{{ crossTopicCount }}</div>
-        <div class="metric-card__hint">展示系统识别出的多平台共同热点主题规模。</div>
-      </article>
-    </section>
+      </section>
+    </RequestState>
 
     <section class="table-card home-board-panel">
       <div class="section-head">
         <div>
-          <h2 class="section-title">平台今日 Top 榜</h2>
-          <p class="section-subtitle">榜单保留平台语境，突出前 3 名与热点排序变化。</p>
+          <h2 class="section-title">平台 Top 榜</h2>
+          <p class="section-subtitle">按平台分别展示热点排行，突出前列热点与最新变化。</p>
         </div>
       </div>
 
@@ -147,108 +176,49 @@
           <div class="home-platform-board__head">
             <div>
               <PlatformPill :platform="platform.key" />
-              <h3>{{ platform.label }}今日 Top 榜</h3>
+              <h3>{{ platform.label }} Top 10</h3>
               <p>{{ platform.description }}</p>
             </div>
-            <el-button type="primary" link @click="goPlatform(platform.key)">进入平台页</el-button>
+            <el-button type="primary" link @click="goPlatform(platform.key)">查看榜单</el-button>
           </div>
 
-          <RequestState
-            compact
-            :loading="platform.loading"
-            :error="platform.error"
-            :empty="!platform.loading && !platform.error && platform.dailyTop.length === 0"
-            empty-description="暂无今日榜单数据"
-            @retry="loadPlatformData(platform)"
-          >
-            <div class="home-rank-list">
-              <article
-                v-if="platform.pinned"
-                class="home-special-card"
-                @click="goDetail(getHotspotId(platform.pinned))"
-              >
-                <div class="home-special-card__label">特殊展示项</div>
-                <div class="home-special-card__title">{{ cleanTitle(platform.pinned.title) }}</div>
-                <div class="home-special-card__meta">
-                  <span>更新时间：{{ formatDateTime(getHotspotTime(platform.pinned)) }}</span>
-                </div>
-              </article>
+          <div v-if="platform.loading" class="home-rank-loading">
+            <div class="home-rank-loading__text">加载中...</div>
+          </div>
 
-              <article
-                v-for="(item, index) in platform.dailyTop"
-                :key="getHotspotId(item, `${platform.key}-${index}`)"
-                class="home-rank-row"
-                @click="goDetail(getHotspotId(item))"
-              >
-                <div class="home-rank-row__rank" :class="{ top: index < 3 }">
-                  {{ index + 1 }}
-                </div>
+          <div v-else-if="platform.error" class="home-rank-error">
+            <div class="home-rank-error__text">{{ platform.error }}</div>
+            <el-button size="small" @click="loadPlatformData(platform)">重试</el-button>
+          </div>
 
-                <div class="home-rank-row__main">
-                  <div class="home-rank-row__title">
-                    <strong>{{ cleanTitle(item.title) }}</strong>
-                  </div>
-                  <div class="home-rank-row__meta">
-                    <span>{{ getPlatformHeatLabel(platform.key) }}：{{ formatHotValue(getHotValue(item), platform.key) }}</span>
-                    <span>最新抓取：{{ platform.latestTime ? formatDateTime(platform.latestTime) : '暂无' }}</span>
-                  </div>
+          <div v-else-if="platform.dailyTop.length" class="home-rank-list">
+            <article
+              v-for="(item, index) in platform.dailyTop"
+              :key="getHotspotId(item, `${platform.key}-${index}`)"
+              class="home-rank-row"
+              @click="goDetail(getHotspotId(item))"
+            >
+              <div class="home-rank-row__rank" :class="{ top: index < 3 }">
+                {{ index + 1 }}
+              </div>
+
+              <div class="home-rank-row__main">
+                <div class="home-rank-row__title">
+                  <strong>{{ cleanTitle(item.title) }}</strong>
                 </div>
-              </article>
-            </div>
-          </RequestState>
+                <div class="home-rank-row__meta">
+                  <span>{{ getPlatformHeatLabel(platform.key) }}：{{ formatHotValue(getHotValue(item), platform.key) }}</span>
+                  <span>最新抓取：{{ platform.latestTime ? formatDateTime(platform.latestTime) : '暂无' }}</span>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <el-empty v-else description="暂无数据" />
+
         </section>
       </div>
     </section>
-
-    <RequestState
-      :loading="crossLoading"
-      :error="crossError"
-      :empty="!crossLoading && !crossError && crossPreviewTopics.length === 0"
-      empty-description="暂无跨平台主题预览"
-      @retry="loadCrossTopics"
-    >
-      <section class="table-card home-cross-panel">
-        <div class="section-head cross-preview-head">
-          <div>
-            <h2 class="section-title">跨平台热点预览</h2>
-            <p class="section-subtitle">突出系统亮点：同一事件在多个平台同步升温时的聚合视角。</p>
-          </div>
-          <el-button type="primary" @click="goCrossPlatform">进入跨平台热点合集</el-button>
-        </div>
-
-        <div class="cross-preview-grid">
-          <article
-            v-for="topic in crossPreviewTopics"
-            :key="topic.id"
-            class="cross-preview-card"
-            @click="goCrossTopic(topic)"
-          >
-            <div class="cross-preview-card__head">
-              <h3>{{ cleanTitle(topic.mainTitle) }}</h3>
-              <el-tag type="primary" size="small" effect="plain">跨平台主题</el-tag>
-            </div>
-
-            <div class="cross-preview-card__platforms">
-              <PlatformPill
-                v-for="platform in getTopicPlatforms(topic)"
-                :key="platform"
-                :platform="platform"
-              />
-            </div>
-
-            <p class="cross-preview-card__summary">
-              {{ buildSummaryText(topic.summary, '该主题已被系统识别为多平台共同关注的话题，可继续进入详情查看关联热点。', 124) }}
-            </p>
-
-            <div class="cross-preview-card__meta">
-              <span>关联平台：{{ topic.platformCount || getTopicPlatforms(topic).length }}</span>
-              <span>关联热点：{{ topic.hotspotCount || topic.hotspots?.length || 0 }}</span>
-              <span>综合指标：{{ formatHotValue(getTopicTotalHotValue(topic)) }}</span>
-            </div>
-          </article>
-        </div>
-      </section>
-    </RequestState>
   </div>
 </template>
 
@@ -260,7 +230,6 @@ import RequestState from '../components/RequestState.vue'
 import PlatformPill from '../components/PlatformPill.vue'
 import {
   getCrossPlatformTopics,
-  getDailyTop,
   getHotspotsByPlatform,
   getPlatformStats
 } from '../api/hotspot'
@@ -273,10 +242,10 @@ import {
   getHotValue,
   getHotspotId,
   getHotspotTime,
-  getPlatformHeatLabel,
-  getPlatformMeta,
   getTopicPlatforms,
-  getTopicTotalHotValue
+  getTopicTotalHotValue,
+  getPlatformHeatLabel,
+  getTopicPrimaryHotspot
 } from '../utils/hotspot'
 
 const router = useRouter()
@@ -297,10 +266,18 @@ const selectedCategory = ref('')
 const crossLoading = ref(false)
 const crossError = ref('')
 const crossTopics = ref([])
+const crossTopicTotal = ref(0)
+const crossScrollerRef = ref(null)
+const crossSlideIndex = ref(0)
 
 const platforms = ref(
   PLATFORM_ORDER.map(platform => ({
-    ...getPlatformMeta(platform),
+    key: platform,
+    ...{
+      weibo: { label: '微博', description: '微博热搜与实时话题' },
+      douyin: { label: '抖音', description: '抖音热视频与讨论热点' },
+      bilibili: { label: 'B站', description: 'B站热搜词条与视频讨论' }
+    }[platform],
     count: 0,
     dailyTop: [],
     currentList: [],
@@ -315,11 +292,92 @@ const totalTodayCount = computed(() =>
   platforms.value.reduce((sum, platform) => sum + Number(platform.count || 0), 0)
 )
 const platformCount = computed(() => platforms.value.length)
-const crossTopicCount = computed(() => crossTopics.value.length)
+const crossTopicCount = computed(() => crossTopicTotal.value || crossTopics.value.length)
 const crossSummaryCount = computed(() =>
   crossTopics.value.filter(topic => String(topic?.summary || '').trim()).length
 )
-const crossPreviewTopics = computed(() => crossTopics.value.slice(0, 4))
+const crossPreviewTopics = computed(() => crossTopics.value.slice(0, 8))
+const crossPageCount = computed(() => Math.ceil(crossPreviewTopics.value.length / 2))
+
+function scrollCrossPreview(direction) {
+  const container = crossScrollerRef.value
+  if (!container) return
+
+  const nextIndex = Math.min(
+    Math.max(crossSlideIndex.value + direction, 0),
+    Math.max(crossPageCount.value - 1, 0)
+  )
+
+  crossSlideIndex.value = nextIndex
+  container.scrollTo({
+    left: container.clientWidth * nextIndex,
+    behavior: 'smooth'
+  })
+}
+
+function normalizeList(result) {
+  if (Array.isArray(result)) return result
+  if (Array.isArray(result?.data)) return result.data
+  if (Array.isArray(result?.records)) return result.records
+  if (Array.isArray(result?.list)) return result.list
+  if (Array.isArray(result?.items)) return result.items
+  return []
+}
+
+function normalizeTopicList(result) {
+  if (Array.isArray(result)) return result
+  if (Array.isArray(result?.records)) return result.records
+  if (Array.isArray(result?.list)) return result.list
+  if (Array.isArray(result?.items)) return result.items
+  if (Array.isArray(result?.data)) return result.data
+  if (Array.isArray(result?.data?.records)) return result.data.records
+  if (Array.isArray(result?.data?.list)) return result.data.list
+  if (Array.isArray(result?.data?.items)) return result.data.items
+  return []
+}
+
+function getTopicTotal(result, list) {
+  return Number(
+    result?.total ?? 
+    result?.data?.total ?? 
+    result?.count ?? 
+    result?.data?.count ?? 
+    list.length
+  )
+}
+
+function isSpecialItem(item) {
+  return (
+    item?.isSpecial === true ||
+    item?.is_special === true ||
+    Number(item?.isSpecial ?? item?.is_special ?? 0) === 1
+  )
+}
+
+function getRankValue(item) {
+  return Number(item?.rankNum ?? item?.rank_num ?? 999999)
+}
+
+function getHeatValueForSort(item) {
+  return Number(item?.hotValue ?? item?.hot_value ?? item?.maxHotValue ?? item?.max_hot_value ?? 0)
+}
+
+function buildHomeTopList(list) {
+  return normalizeList(list)
+    .filter(item => !isSpecialItem(item))
+    .slice()
+    .sort((a, b) => {
+      const rankA = getRankValue(a)
+      const rankB = getRankValue(b)
+
+      if (rankA !== rankB) {
+        return rankA - rankB
+      }
+
+      return getHeatValueForSort(b) - getHeatValueForSort(a)
+    })
+    .slice(0, 10)
+}
 
 async function loadPlatformStats() {
   try {
@@ -344,22 +402,26 @@ async function loadPlatformData(platformState) {
   platformState.error = ''
 
   try {
-    const [dailyTop, currentList] = await Promise.all([
-      getDailyTop(platformState.key, 10),
-      getHotspotsByPlatform(platformState.key)
-    ])
+    const currentResult = await getHotspotsByPlatform(platformState.key)
+    console.log('[home raw result]', platformState.key, currentResult)
 
-    platformState.dailyTop = Array.isArray(dailyTop) ? dailyTop : []
-    platformState.currentList = Array.isArray(currentList) ? currentList : []
-    platformState.pinned = platformState.currentList.find(item => item.isSpecial) || null
+    const currentList = normalizeList(currentResult)
+    console.log('[home normalized list]', platformState.key, currentList)
 
-    const latest = [...platformState.currentList]
+    platformState.currentList = currentList
+    platformState.dailyTop = buildHomeTopList(currentList)
+    platformState.pinned = currentList.find(item => isSpecialItem(item)) || null
+
+    console.log('[home top list]', platformState.key, platformState.dailyTop)
+
+    const latest = currentList
       .map(getHotspotTime)
       .filter(Boolean)
       .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0]
 
     platformState.latestTime = latest || ''
   } catch (requestError) {
+    console.error('[home top10 error]', platformState.key, requestError)
     platformState.error = requestError?.message || `${platformState.label}榜单加载失败`
     platformState.dailyTop = []
     platformState.currentList = []
@@ -367,6 +429,7 @@ async function loadPlatformData(platformState) {
     platformState.latestTime = ''
   } finally {
     platformState.loading = false
+    console.log('[home loading end]', platformState.key, platformState.loading)
   }
 }
 
@@ -375,11 +438,20 @@ async function loadCrossTopics() {
   crossError.value = ''
 
   try {
-    const result = await getCrossPlatformTopics({ limit: 50, todayOnly: true })
-    crossTopics.value = Array.isArray(result) ? result : []
-  } catch (requestError) {
-    crossError.value = requestError?.message || '跨平台主题加载失败'
+    const result = await getCrossPlatformTopics({ page: 1, pageSize: 8 })
+    
+    console.log('[home cross raw]', result)
+
+    const list = normalizeTopicList(result)
+    console.log('[home cross list]', list)
+
+    crossTopics.value = list
+    crossTopicTotal.value = getTopicTotal(result, list)
+  } catch (error) {
+    console.error('[home cross error]', error)
+    crossError.value = error?.message || '跨平台主题加载失败'
     crossTopics.value = []
+    crossTopicTotal.value = 0
   } finally {
     crossLoading.value = false
   }
@@ -428,8 +500,9 @@ function goHistory() {
 }
 
 function goCrossTopic(topic) {
-  if (topic?.id) {
-    router.push({ name: 'crossPlatformTopic', params: { id: topic.id } })
+  const primary = getTopicPrimaryHotspot(topic)
+  if (primary) {
+    goDetail(getHotspotId(primary))
     return
   }
   goCrossPlatform()
@@ -448,41 +521,77 @@ onMounted(async () => {
 <style scoped>
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
-  gap: 28px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.7fr);
+  gap: 24px;
 }
 
 .home-hero__search {
-  max-width: 640px;
-  margin-top: 24px;
+  max-width: 600px;
+  margin-top: 20px;
 }
 
 .home-hero__actions {
-  margin-top: 18px;
+  margin-top: 16px;
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 
 .home-hero__chips {
-  margin-top: 20px;
+  margin-top: 18px;
 }
 
 .home-chip-button {
   padding: 8px 13px;
 }
 
+.home-hero__mini-stats {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 180px));
+  gap: 14px;
+}
+
+.home-hero__mini-stat {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(135, 160, 206, 0.18);
+  box-shadow: 0 12px 30px rgba(30, 64, 175, 0.06);
+}
+
+.home-hero__mini-label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.home-hero__mini-stat strong {
+  display: block;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.home-hero__mini-stat small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .home-hero__aside {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
 }
 
-.home-pipeline,
-.home-hero__legend {
+.home-pipeline {
   position: relative;
   overflow: hidden;
-  padding: 20px;
+  padding: 18px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(135, 160, 206, 0.14);
@@ -503,7 +612,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .home-pipeline__head span {
@@ -521,33 +630,33 @@ onMounted(async () => {
 
 .home-pipeline__steps {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .home-pipeline__step {
   position: relative;
-  padding: 14px 14px 14px 44px;
-  border-radius: 18px;
+  padding: 12px 12px 12px 40px;
+  border-radius: 16px;
   background: linear-gradient(135deg, rgba(244, 248, 255, 0.98), rgba(239, 246, 255, 0.9));
 }
 
 .home-pipeline__step::before {
   content: '';
   position: absolute;
-  left: 18px;
-  top: 18px;
-  width: 12px;
-  height: 12px;
+  left: 16px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: linear-gradient(135deg, #2f6bff, #28b8ff);
-  box-shadow: 0 0 0 6px rgba(47, 107, 255, 0.08);
+  box-shadow: 0 0 0 5px rgba(47, 107, 255, 0.08);
 }
 
 .home-pipeline__step:not(:last-child)::after {
   content: '';
   position: absolute;
-  left: 23px;
-  top: 30px;
+  left: 20px;
+  top: 26px;
   width: 2px;
   height: calc(100% - 8px);
   background: linear-gradient(180deg, rgba(47, 107, 255, 0.3), rgba(47, 107, 255, 0));
@@ -555,69 +664,23 @@ onMounted(async () => {
 
 .home-pipeline__step strong {
   display: block;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .home-pipeline__step span {
   display: block;
-  margin-top: 4px;
+  margin-top: 3px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .home-pipeline__foot {
   position: relative;
   z-index: 1;
-  margin: 16px 0 0;
+  margin-top: 12px;
   color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-.home-hero__legend {
-  display: grid;
-  gap: 12px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-secondary);
-  font-weight: 700;
-}
-
-.legend-item__dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.legend-item__dot--weibo {
-  background: #ef4444;
-}
-
-.legend-item__dot--douyin {
-  background: #0f172a;
-}
-
-.legend-item__dot--bilibili {
-  background: #38bdf8;
-}
-
-.home-metric-card--total {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(236, 244, 255, 0.96));
-}
-
-.home-metric-card--platforms {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(237, 249, 247, 0.94));
-}
-
-.home-metric-card--summary {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 241, 255, 0.94));
-}
-
-.home-metric-card--topics {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 244, 236, 0.94));
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .home-board-panel,
@@ -772,13 +835,56 @@ onMounted(async () => {
 }
 
 .cross-preview-head {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.cross-preview-grid {
+.cross-preview-carousel-wrap {
+  position: relative;
+}
+
+.cross-preview-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  box-shadow: 0 12px 28px rgba(30, 64, 175, 0.16);
+}
+
+.cross-preview-nav--prev {
+  left: 8px;
+}
+
+.cross-preview-nav--next {
+  right: 8px;
+}
+
+.cross-preview-nav.is-disabled {
+  opacity: 0.35;
+}
+
+.cross-preview-carousel {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 16px) / 2);
   gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  padding-bottom: 4px;
+}
+
+.cross-preview-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.cross-preview-card--slide {
+  scroll-snap-align: start;
+  min-height: 240px;
 }
 
 .cross-preview-card {
@@ -848,9 +954,12 @@ onMounted(async () => {
 }
 
 @media (max-width: 1160px) {
-  .home-platform-grid,
-  .cross-preview-grid {
+  .home-platform-grid {
     grid-template-columns: 1fr;
+  }
+
+  .cross-preview-carousel {
+    grid-auto-columns: 100%;
   }
 }
 

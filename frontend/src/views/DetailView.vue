@@ -3,7 +3,7 @@
     <section class="page-card page-card--strong detail-toolbar">
       <div class="detail-toolbar__inner">
         <el-button type="primary" plain @click="goBack">返回上一页</el-button>
-        <span class="detail-toolbar__tip">热点详情页聚焦标题、AI 简介、趋势变化与跨平台关联</span>
+        <span class="detail-toolbar__tip">聚焦热点标题、趋势变化与跨平台关联，便于连续观察传播表现。</span>
       </div>
     </section>
 
@@ -22,7 +22,7 @@
               <strong>跨平台分析</strong>
               <span>已纳入共同话题识别</span>
             </div>
-            <el-tag v-if="detail.isSpecial" type="warning" effect="plain">平台特殊项</el-tag>
+            <el-tag v-if="detail.isSpecial" type="warning" effect="plain">平台推荐</el-tag>
           </div>
 
           <h1 class="page-hero__title detail-hero__title">{{ cleanTitle(detail.title) || '未命名热点' }}</h1>
@@ -38,12 +38,54 @@
               <strong>{{ formatHotValue(getHotValue(detail), detail.platform) }}</strong>
             </div>
             <div class="detail-fact">
-              <span>更新时间</span>
-              <strong>{{ formatDateTime(getHotspotTime(detail)) }}</strong>
-            </div>
-            <div class="detail-fact">
               <span>关联热点</span>
               <strong>{{ relatedHotspotIds.length }}</strong>
+            </div>
+          </div>
+
+          <div
+            v-if="relatedHotspots.length || relatedHotspotIds.length"
+            class="detail-hero-related"
+          >
+            <div class="detail-hero-related__head">
+              <div>
+                <span>关联热点</span>
+                <strong>相关传播入口</strong>
+              </div>
+              <el-tag v-if="relatedLoading" type="info" effect="plain">加载中</el-tag>
+            </div>
+
+            <div class="detail-hero-related__list">
+              <article
+                v-for="item in relatedHotspots"
+                :key="getHotspotId(item)"
+                class="detail-hero-related__item"
+                @click="goDetail(getHotspotId(item))"
+              >
+                <div class="detail-hero-related__title">
+                  <PlatformPill :platform="item.platform" />
+                  <h3>{{ cleanTitle(item.title) || '相关热点条目' }}</h3>
+                </div>
+                <div class="detail-hero-related__meta">
+                  <span>排名：{{ item.rankNum ?? item.rank_num ?? '暂无' }}</span>
+                  <span>{{ getPlatformHeatLabel(item.platform) }}：{{ formatHotValue(getHotValue(item), item.platform) }}</span>
+                </div>
+              </article>
+
+              <article
+                v-for="id in missingRelatedIds"
+                :key="`fallback-${id}`"
+                class="detail-hero-related__item detail-hero-related__item--fallback"
+                @click="goDetail(id)"
+              >
+                <div class="detail-hero-related__title">
+                  <el-tag effect="plain">关联热点</el-tag>
+                  <h3>查看相关热点详情</h3>
+                </div>
+                <div class="detail-hero-related__meta">
+                  <span>进入详情页继续查看。</span>
+                </div>
+              </article>
             </div>
           </div>
         </div>
@@ -67,7 +109,7 @@
             <span>分析说明</span>
             <strong>{{ isCrossPlatform ? '跨平台传播观察' : '单平台热点详情' }}</strong>
             <p>
-              {{ isCrossPlatform ? '当前热点已经进入跨平台主题分析链路，可结合下方趋势和关联热点一起展示。' : '当前页面聚焦所属平台内的热点表现与时间序列变化。' }}
+              {{ isCrossPlatform ? '当前热点已纳入跨平台主题观察，可结合下方趋势与关联热点一起查看。' : '当前页面聚焦所属平台内的热点表现与时间序列变化。' }}
             </p>
           </div>
         </div>
@@ -78,7 +120,7 @@
           <div>
             <h2 class="section-title">AI 简介</h2>
             <p class="section-subtitle">
-              {{ hasAiSummary ? '当前内容来自现有详情接口中的 AI / 摘要字段。' : '接口暂未提供 AI 简介，页面已自动生成自然的兜底说明。' }}
+              {{ hasAiSummary ? '结合现有摘要信息，对热点内容进行快速阅读。' : '当前尚未形成摘要内容，页面先展示概览说明与趋势观察。' }}
             </p>
           </div>
           <el-tag v-if="isCrossPlatform" type="warning" effect="plain">跨平台分析</el-tag>
@@ -100,7 +142,10 @@
           <div class="section-head detail-section-head">
             <div>
               <h2 class="section-title">趋势分析</h2>
-              <p class="section-subtitle">优先展示现有趋势接口返回的排名 / 热度时间序列。</p>
+              <p class="section-subtitle">根据已采集的时间序列展示排名与热度变化。</p>
+              <span v-if="trendDateLabel" class="trend-date-label">
+                {{ trendDateLabel }}
+              </span>
             </div>
           </div>
 
@@ -115,7 +160,7 @@
           <div class="section-head detail-section-head">
             <div>
               <h2 class="section-title">基础信息</h2>
-              <p class="section-subtitle">保留用户真正关心的字段，不直接暴露数据库味很重的内部信息。</p>
+              <p class="section-subtitle">聚合展示平台、排名、热度与来源等关键信息。</p>
             </div>
           </div>
 
@@ -133,67 +178,11 @@
               <dd>{{ formatHotValue(getHotValue(detail), detail.platform) }}</dd>
             </div>
             <div class="detail-info-item">
-              <dt>更新时间</dt>
-              <dd>{{ formatDateTime(getHotspotTime(detail)) }}</dd>
-            </div>
-            <div class="detail-info-item">
               <dt>来源状态</dt>
               <dd>{{ detail.sourceUrl ? '已提供来源链接' : '暂无来源链接' }}</dd>
             </div>
           </dl>
         </article>
-      </section>
-
-      <section v-if="detail && (relatedHotspots.length || relatedHotspotIds.length)" class="table-card detail-related-panel">
-        <div class="section-head detail-section-head">
-          <div>
-            <h2 class="section-title">关联热点</h2>
-            <p class="section-subtitle">
-              {{ isCrossPlatform ? '该区域用于展示跨平台主题下的相关热点。' : '若接口返回了关联热点 ID，这里会兼容展示可跳转入口。' }}
-            </p>
-          </div>
-          <el-tag v-if="relatedLoading" type="info" effect="plain">加载中</el-tag>
-        </div>
-
-        <div class="detail-related-list">
-          <article
-            v-for="item in relatedHotspots"
-            :key="getHotspotId(item)"
-            class="detail-related-item"
-            @click="goDetail(getHotspotId(item))"
-          >
-            <div class="detail-related-item__main">
-              <div class="detail-related-item__title-row">
-                <PlatformPill :platform="item.platform" />
-                <h3>{{ cleanTitle(item.title) || `关联热点 ${getHotspotId(item)}` }}</h3>
-              </div>
-              <div class="detail-related-item__meta">
-                <span>排名：{{ item.rankNum ?? '暂无' }}</span>
-                <span>{{ getPlatformHeatLabel(item.platform) }}：{{ formatHotValue(getHotValue(item), item.platform) }}</span>
-                <span>更新时间：{{ formatDateTime(getHotspotTime(item)) }}</span>
-              </div>
-            </div>
-            <el-button type="primary" plain @click.stop="goDetail(getHotspotId(item))">查看详情</el-button>
-          </article>
-
-          <article
-            v-for="id in missingRelatedIds"
-            :key="`fallback-${id}`"
-            class="detail-related-item detail-related-item--fallback"
-            @click="goDetail(id)"
-          >
-            <div class="detail-related-item__main">
-              <div class="detail-related-item__title-row">
-                <el-tag effect="plain">关联热点</el-tag>
-                <h3>热点 ID：{{ id }}</h3>
-              </div>
-              <div class="detail-related-item__meta">
-                <span>接口未返回完整标题，已保留可跳转入口</span>
-              </div>
-            </div>
-            <el-button type="primary" plain @click.stop="goDetail(id)">查看详情</el-button>
-          </article>
-        </div>
       </section>
     </RequestState>
   </div>
@@ -208,11 +197,9 @@ import RequestState from '../components/RequestState.vue'
 import { getHotspotDetail, getTrend } from '../api/hotspot'
 import {
   cleanTitle,
-  formatDateTime,
   formatHotValue,
   getHotValue,
   getHotspotId,
-  getHotspotTime,
   getPlatformHeatLabel,
   getPlatformLabel,
   parsePlatformList
@@ -272,7 +259,7 @@ const fallbackSummary = computed(() => {
 
   if (isCrossPlatform.value) {
     const platformText = relatedPlatforms.value.map(getPlatformLabel).join('、') || '多个平台'
-    return `该热点已被系统识别为跨平台关联话题，目前涉及${platformText}的共同讨论。当前接口尚未返回完整 AI 简介，因此页面先展示基础信息、趋势变化和关联热点入口，便于继续追踪传播路径。`
+    return `该热点已被识别为跨平台关联话题，目前涉及${platformText}的共同讨论。页面已结合趋势变化与关联热点信息，帮助继续观察传播路径。`
   }
 
   const rankText =
@@ -287,7 +274,7 @@ const fallbackSummary = computed(() => {
           detail.value.platform
         )}`
 
-  return `该热点正在${getPlatformLabel(detail.value.platform)}中受到关注，${rankText}，${heatText}。当前接口暂无 AI 简介时，页面会自动提供这段自然说明，避免详情页出现空白内容。`
+  return `该热点正在${getPlatformLabel(detail.value.platform)}中受到关注，${rankText}，${heatText}。当摘要内容暂未形成时，页面会先提供这段概览说明，帮助快速了解当前热点表现。`
 })
 
 const displaySummary = computed(() => {
@@ -332,6 +319,18 @@ const hasTrendData = computed(() => {
   )
 })
 
+const trendDateLabel = computed(() => {
+  const times = trend.value.times || []
+  if (!times.length) return ''
+
+  const firstDate = formatDateOnly(times[0])
+  const lastDate = formatDateOnly(times[times.length - 1])
+
+  if (!firstDate) return ''
+  if (firstDate === lastDate) return `观测日期：${firstDate}`
+  return `观测区间：${firstDate} 至 ${lastDate}`
+})
+
 function disposeChart() {
   if (chartInstance) {
     chartInstance.dispose()
@@ -345,17 +344,158 @@ function resizeChart() {
   }
 }
 
-function initChart() {
-  if (!chartRef.value || !hasTrendData.value || !detail.value) return
+function getRankAxisMax(rankValues) {
+  const ranks = (rankValues || [])
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value) && value >= 1)
+
+  if (!ranks.length) return 5
+
+  return Math.max(5, Math.ceil(Math.max(...ranks)))
+}
+
+function parseTrendDate(value) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function padTime(value) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDateOnly(value) {
+  const date = parseTrendDate(value)
+  if (!date) return ''
+  const year = date.getFullYear()
+  const month = padTime(date.getMonth() + 1)
+  const day = padTime(date.getDate())
+  return `${year}-${month}-${day}`
+}
+
+function formatMonthDayTime(value) {
+  const date = parseTrendDate(value)
+  if (!date) return ''
+  const month = padTime(date.getMonth() + 1)
+  const day = padTime(date.getDate())
+  const hour = padTime(date.getHours())
+  const minute = padTime(date.getMinutes())
+  return `${month}-${day} ${hour}:${minute}`
+}
+
+function formatFullDateTime(value) {
+  const date = parseTrendDate(value)
+  if (!date) return String(value || '')
+  return `${date.getFullYear()}-${padTime(date.getMonth() + 1)}-${padTime(date.getDate())} ${padTime(date.getHours())}:${padTime(date.getMinutes())}`
+}
+
+function formatAxisTime(value) {
+  const date = parseTrendDate(value)
+  if (!date) {
+    const text = String(value || '')
+    return text.length >= 5 ? text.slice(0, 5) : text
+  }
+  return `${padTime(date.getHours())}:${padTime(date.getMinutes())}`
+}
+
+function getAxisLabelStep(labels, maxLabelCount = 6) {
+  const count = labels?.length || 0
+  if (count <= maxLabelCount) return 1
+  return Math.ceil((count - 1) / (maxLabelCount - 1))
+}
+
+function normalizeTrendData(raw) {
+  if (!raw) {
+    return { times: [], hotValues: [], rankValues: [] }
+  }
+
+  if (Array.isArray(raw)) {
+    return {
+      times: raw.map(
+        item =>
+          item.recordTime ||
+          item.record_time ||
+          item.crawlTime ||
+          item.crawl_time ||
+          item.createdAt ||
+          item.created_at ||
+          ''
+      ),
+      hotValues: raw.map(
+        item => item.hotValue ?? item.hot_value ?? item.maxHotValue ?? item.max_hot_value ?? null
+      ),
+      rankValues: raw.map(
+        item => item.rankNum ?? item.rank_num ?? item.bestRankNum ?? item.best_rank_num ?? null
+      )
+    }
+  }
+
+  if (Array.isArray(raw.records)) return normalizeTrendData(raw.records)
+  if (Array.isArray(raw.list)) return normalizeTrendData(raw.list)
+  if (Array.isArray(raw.items)) return normalizeTrendData(raw.items)
+  if (Array.isArray(raw.data)) return normalizeTrendData(raw.data)
+
+  return {
+    times: Array.isArray(raw.times) ? raw.times : [],
+    hotValues: Array.isArray(raw.hotValues)
+      ? raw.hotValues
+      : Array.isArray(raw.hot_values)
+        ? raw.hot_values
+        : [],
+    rankValues: Array.isArray(raw.rankValues)
+      ? raw.rankValues
+      : Array.isArray(raw.rank_values)
+        ? raw.rank_values
+        : []
+  }
+}
+
+async function initChart() {
+  if (!hasTrendData.value || !detail.value) {
+    disposeChart()
+    return
+  }
+
+  await nextTick()
+
+  if (!chartRef.value) {
+    return
+  }
 
   disposeChart()
   chartInstance = echarts.init(chartRef.value)
+
+  const rankAxisMax = getRankAxisMax(trend.value.rankValues)
+  const timeLabels = trend.value.times || []
+  const axisLabelStep = getAxisLabelStep(timeLabels, 6)
 
   chartInstance.setOption({
     color: ['#2f6bff', '#28b8ff'],
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'cross' }
+      axisPointer: {
+        type: 'cross',
+        label: { show: false }
+      },
+      formatter: params => {
+        const list = Array.isArray(params) ? params : [params]
+        const time = list[0]?.axisValue
+        const rankItem = list.find(item => item.seriesName === '平台排名')
+        const heatName = getPlatformHeatLabel(detail.value.platform)
+        const heatItem = list.find(item => item.seriesName === heatName)
+
+        const rows = [`观测时间：${formatFullDateTime(time)}`]
+
+        if (rankItem?.data !== null && rankItem?.data !== undefined) {
+          rows.push(`平台排名：第 ${rankItem.data} 名`)
+        }
+
+        if (heatItem?.data !== null && heatItem?.data !== undefined) {
+          rows.push(`${heatName}：${formatHotValue(heatItem.data, detail.value.platform)}`)
+        }
+
+        return rows.join('<br/>')
+      }
     },
     legend: {
       top: 4,
@@ -364,16 +504,23 @@ function initChart() {
     grid: {
       left: 54,
       right: 76,
-      top: 56,
+      top: 72,
       bottom: 48
     },
     xAxis: {
       type: 'category',
       data: trend.value.times,
       boundaryGap: false,
+      name: '',
       axisLabel: {
         color: '#5f728f',
-        rotate: 24
+        rotate: 24,
+        formatter: value => formatAxisTime(value),
+        interval: index => {
+          const lastIndex = trend.value.times.length - 1
+          return index === 0 || index === lastIndex || index % axisLabelStep === 0
+        },
+        hideOverlap: true
       },
       axisLine: {
         lineStyle: {
@@ -385,9 +532,17 @@ function initChart() {
       {
         type: 'value',
         name: '排名',
+        nameLocation: 'start',
+        nameGap: 18,
         inverse: true,
-        min: value => Math.max(1, Math.floor(value.min || 1) - 1),
-        axisLabel: { color: '#5f728f' },
+        min: 1,
+        max: 50,
+        minInterval: 1,
+        interval: 10,
+        axisLabel: {
+          color: '#5f728f',
+          formatter: value => Number.isInteger(Number(value)) ? Number(value) : ''
+        },
         splitLine: {
           lineStyle: {
             color: 'rgba(135, 160, 206, 0.14)'
@@ -397,6 +552,8 @@ function initChart() {
       {
         type: 'value',
         name: getPlatformHeatLabel(detail.value.platform),
+        nameLocation: 'end',
+        nameGap: 16,
         position: 'right',
         axisLabel: {
           color: '#5f728f',
@@ -416,12 +573,6 @@ function initChart() {
         symbolSize: 7,
         lineStyle: {
           width: 3
-        },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(47, 107, 255, 0.18)' },
-            { offset: 1, color: 'rgba(47, 107, 255, 0.02)' }
-          ])
         }
       },
       {
@@ -438,6 +589,10 @@ function initChart() {
       }
     ]
   })
+
+  setTimeout(() => {
+    resizeChart()
+  }, 0)
 }
 
 async function loadRelatedHotspots() {
@@ -492,16 +647,15 @@ async function loadPage() {
     detail.value = detailResult.value || null
 
     if (trendResult.status === 'fulfilled') {
-      trend.value = {
-        times: Array.isArray(trendResult.value?.times) ? trendResult.value.times : [],
-        hotValues: Array.isArray(trendResult.value?.hotValues) ? trendResult.value.hotValues : [],
-        rankValues: Array.isArray(trendResult.value?.rankValues) ? trendResult.value.rankValues : []
-      }
+      trend.value = normalizeTrendData(trendResult.value)
     }
 
     await loadRelatedHotspots()
+
+    loading.value = false
+
     await nextTick()
-    initChart()
+    await initChart()
   } catch (requestError) {
     error.value = requestError?.message || '热点详情加载失败，请稍后重试'
     detail.value = null
@@ -511,8 +665,8 @@ async function loadPage() {
       rankValues: []
     }
     relatedHotspots.value = []
-  } finally {
     loading.value = false
+    disposeChart()
   }
 }
 
@@ -547,8 +701,7 @@ watch(
       return
     }
 
-    await nextTick()
-    initChart()
+    await initChart()
   }
 )
 
@@ -690,6 +843,146 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.detail-hero-related {
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(135, 160, 206, 0.14);
+}
+
+.detail-hero-related__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.detail-hero-related__head span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-hero-related__head strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.detail-hero-related__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-hero-related__item {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(245, 249, 255, 0.82);
+  border: 1px solid rgba(135, 160, 206, 0.12);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.detail-hero-related__item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(47, 107, 255, 0.26);
+}
+
+.detail-hero-related__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detail-hero-related__title h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.detail-hero-related__meta {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.detail-hero-related__item--fallback {
+  border-style: dashed;
+}
+
+.detail-side-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-side-card__head strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+}
+
+.detail-side-card--related {
+  gap: 12px;
+}
+
+.detail-side-related-list {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-side-related-item {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(245, 249, 255, 0.78);
+  border: 1px solid rgba(135, 160, 206, 0.12);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.detail-side-related-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(47, 107, 255, 0.26);
+}
+
+.detail-side-related-item__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detail-side-related-item__title h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.detail-side-related-item__meta {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.detail-side-related-item--fallback {
+  border-style: dashed;
+}
+
 .detail-summary-card {
   padding: 24px;
 }
@@ -698,10 +991,22 @@ onBeforeUnmount(() => {
   margin-bottom: 18px;
 }
 
+.trend-date-label {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .detail-summary-card__body {
   position: relative;
-  display: grid;
-  gap: 16px;
+  display: block;
   padding-left: 18px;
 }
 
@@ -718,9 +1023,15 @@ onBeforeUnmount(() => {
 
 .detail-summary-card__paragraph {
   margin: 0;
+  padding: 0;
   color: var(--text-primary);
   font-size: 15px;
   line-height: 1.95;
+  text-indent: 2em;
+}
+
+.detail-summary-card__paragraph + .detail-summary-card__paragraph {
+  margin-top: 0;
 }
 
 .detail-summary-card__paragraph:first-child {
@@ -740,7 +1051,9 @@ onBeforeUnmount(() => {
 }
 
 .detail-chart {
+  width: 100%;
   height: 420px;
+  min-height: 420px;
 }
 
 .detail-trend-empty {
@@ -857,6 +1170,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
+  .detail-hero-related__list {
+    grid-template-columns: 1fr;
+  }
+
   .detail-related-item {
     grid-template-columns: 1fr;
   }

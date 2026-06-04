@@ -3,19 +3,18 @@
     <section class="page-hero platform-hero">
       <div class="platform-hero__header">
         <div>
-          <span class="page-hero__eyebrow">{{ platformMeta.label }} Hotspot Board</span>
+          <span class="page-hero__eyebrow">{{ platformMeta.label }}热点观察</span>
           <h1 class="page-hero__title">{{ platformMeta.label }}热点榜单</h1>
           <p class="page-hero__subtitle">
-            支持查看当前榜单与今日榜单；当切换到指定日期时，页面会继续通过现有历史榜单接口进行兼容展示，但仍保持
-            `daily` 模式，不再使用 `history` 作为平台页模式参数。
+            展示该平台近期采集到的热点内容，可在当前榜单和当日汇总之间切换查看。
           </p>
         </div>
 
         <div class="platform-hero__highlight">
-          <PlatformPill :platform="platform" />
-          <strong>{{ mode === 'current' ? '当前榜单' : '今日 / 历史日榜' }}</strong>
-          <span>{{ platformMeta.heatLabel }}口径保持与平台返回字段一致</span>
-        </div>
+        <PlatformPill :platform="platform" />
+        <strong>{{ mode === 'current' ? '最新榜单' : '当日热点汇总' }}</strong>
+        <span>{{ platformMeta.heatLabel }}按平台原始口径展示，便于保持观察一致性。</span>
+      </div>
       </div>
 
       <div class="platform-hero-metrics">
@@ -28,8 +27,8 @@
           <strong>{{ mode === 'current' ? rankedCurrentHotspots.length : activeDailyList.length }}</strong>
         </div>
         <div class="platform-hero-metric">
-          <span>{{ mode === 'current' ? '特殊项数量' : '统计日期' }}</span>
-          <strong>{{ mode === 'current' ? currentSpecialHotspots.length : selectedDate }}</strong>
+          <span>{{ mode === 'current' ? '特殊项数量' : '特殊项数量' }}</span>
+          <strong>{{ mode === 'current' ? currentSpecialHotspots.length : activeDailyList.filter(item => item.isSpecial).length }}</strong>
         </div>
         <div class="platform-hero-metric">
           <span>{{ mode === 'current' ? '最新抓取时间' : '指标口径' }}</span>
@@ -72,16 +71,7 @@
           </button>
         </div>
 
-        <div v-if="mode === 'daily'" class="platform-toolbar__date">
-          <el-date-picker
-            v-model="selectedDate"
-            type="date"
-            value-format="YYYY-MM-DD"
-            :clearable="false"
-            placeholder="选择日期"
-          />
-          <el-button type="primary" @click="applyDate">查询日期</el-button>
-        </div>
+        <el-button @click="goHistory">查看历史榜单</el-button>
       </div>
     </section>
 
@@ -98,7 +88,7 @@
           <div class="section-head platform-section-head">
             <div>
               <h2 class="section-title">置顶 / 特殊展示项</h2>
-              <p class="section-subtitle">单独展示平台特殊项，避免与普通排名混在一起。</p>
+              <p class="section-subtitle">单独展示平台推荐或置顶内容，避免与普通排名混在一起。</p>
             </div>
           </div>
 
@@ -126,7 +116,7 @@
           <div class="section-head platform-section-head">
             <div>
               <h2 class="section-title">当前热点列表</h2>
-              <p class="section-subtitle">按榜单行方式展示平台最新快照中的热点结果，默认每页 25 条。</p>
+              <p class="section-subtitle">按榜单顺序展示最新采集结果，默认每页 25 条。</p>
             </div>
           </div>
 
@@ -176,14 +166,8 @@
         <section class="table-card platform-list-panel">
           <div class="section-head platform-section-head">
             <div>
-              <h2 class="section-title">{{ isTodaySelected ? `${platformMeta.label}今日榜单` : `${selectedDate} 历史榜单` }}</h2>
-              <p class="section-subtitle">
-                {{
-                  isTodaySelected
-                    ? '今日榜单按热度峰值展示；若选择历史日期，则兼容读取归档榜单数据。'
-                    : '当前列表来自后端历史榜单接口，继续保留原有业务能力。'
-                }}
-              </p>
+              <h2 class="section-title">{{ platformMeta.label }}当日热点榜单</h2>
+              <p class="section-subtitle">汇总当天出现过的热点内容，并按整体表现进行排序。</p>
             </div>
           </div>
 
@@ -248,7 +232,6 @@ import {
   getHotspotId,
   getHotspotTime,
   getPlatformMeta,
-  getToday,
   normalizeTag
 } from '../utils/hotspot'
 
@@ -257,13 +240,11 @@ const router = useRouter()
 
 const platform = ref('weibo')
 const mode = ref('current')
-const selectedDate = ref(getToday())
 const loading = ref(false)
 const error = ref('')
 
 const currentHotspots = ref([])
 const dailyHotspots = ref([])
-const historyHotspots = ref([])
 
 const currentPage = ref(1)
 const dailyPage = ref(1)
@@ -274,8 +255,7 @@ const platformSwitches = PLATFORM_ORDER.map(getPlatformMeta)
 const platformMeta = computed(() => getPlatformMeta(platform.value))
 const currentSpecialHotspots = computed(() => currentHotspots.value.filter(item => item.isSpecial))
 const rankedCurrentHotspots = computed(() => currentHotspots.value.filter(item => !item.isSpecial))
-const isTodaySelected = computed(() => selectedDate.value === getToday())
-const activeDailyList = computed(() => (isTodaySelected.value ? dailyHotspots.value : historyHotspots.value))
+const activeDailyList = computed(() => dailyHotspots.value)
 const latestTimeText = computed(() => {
   const latest = [...currentHotspots.value]
     .map(getHotspotTime)
@@ -296,7 +276,7 @@ const pagedDailyList = computed(() => {
 
 const emptyState = computed(() => !error.value && !loading.value && (mode.value === 'current' ? currentHotspots.value.length === 0 : activeDailyList.value.length === 0))
 const emptyDescription = computed(() =>
-  mode.value === 'current' ? '当前榜单暂无数据' : isTodaySelected.value ? '今日榜单暂无数据' : '该日期暂无历史榜单数据'
+  mode.value === 'current' ? '当前榜单暂无数据' : '今日榜单暂无数据'
 )
 
 function syncRouteState() {
@@ -305,8 +285,6 @@ function syncRouteState() {
 
   const nextMode = String(route.query.mode || 'current')
   mode.value = ['current', 'daily'].includes(nextMode) ? nextMode : 'current'
-
-  selectedDate.value = String(route.query.date || getToday())
 }
 
 async function loadCurrent() {
@@ -330,21 +308,12 @@ async function loadDaily() {
   error.value = ''
 
   try {
-    if (isTodaySelected.value) {
-      const result = await getDailyTop(platform.value, 500)
-      dailyHotspots.value = Array.isArray(result) ? result : []
-      historyHotspots.value = []
-    } else {
-      const result = await getHistoryHotspots(platform.value, selectedDate.value)
-      historyHotspots.value = Array.isArray(result) ? result : []
-      dailyHotspots.value = []
-    }
-
+    const result = await getDailyTop(platform.value, 500)
+    dailyHotspots.value = Array.isArray(result) ? result : []
     dailyPage.value = 1
   } catch (requestError) {
     error.value = requestError?.message || `${platformMeta.value.label}日榜加载失败`
     dailyHotspots.value = []
-    historyHotspots.value = []
   } finally {
     loading.value = false
   }
@@ -364,7 +333,6 @@ function pushRoute(queryOverrides = {}) {
     params: { platform: platform.value },
     query: {
       mode: mode.value,
-      ...(mode.value === 'daily' ? { date: selectedDate.value } : {}),
       ...queryOverrides
     }
   })
@@ -373,7 +341,12 @@ function pushRoute(queryOverrides = {}) {
 function switchPlatform(nextPlatform) {
   if (platform.value === nextPlatform) return
   platform.value = nextPlatform
-  pushRoute()
+  mode.value = 'current'
+  router.replace({
+    name: 'platform',
+    params: { platform: nextPlatform },
+    query: { mode: 'current' }
+  })
 }
 
 function switchMode(nextMode) {
@@ -382,9 +355,13 @@ function switchMode(nextMode) {
   pushRoute()
 }
 
-function applyDate() {
-  mode.value = 'daily'
-  pushRoute()
+function goHistory() {
+  router.push({
+    name: 'history',
+    query: {
+      platform: platform.value
+    }
+  })
 }
 
 function getDisplayRank(index) {
